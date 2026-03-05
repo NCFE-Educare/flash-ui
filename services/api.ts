@@ -1,0 +1,160 @@
+import { Platform } from 'react-native';
+
+const BASE_URL = 'http://127.0.0.1:8000';
+
+// ── Generic fetch wrapper ─────────────────────────────────────────────────────
+export async function apiFetch<T = any>(
+    path: string,
+    options: RequestInit & { token?: string } = {}
+): Promise<T> {
+    const { token, headers = {}, ...rest } = options;
+    const res = await fetch(`${BASE_URL}${path}`, {
+        ...rest,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(headers as Record<string, string>),
+        },
+    });
+
+    if (res.status === 204) return undefined as T;
+
+    const data = await res.json();
+    if (!res.ok) {
+        const msg = data?.detail ?? `Error ${res.status}`;
+        throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+    return data as T;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+export interface TokenResponse {
+    access_token: string;
+    token_type: string;
+}
+export interface UserInfo {
+    id: number;
+    email: string;
+    username: string;
+}
+export interface Session {
+    id: number;
+    title: string;
+    created_at: string;
+    updated_at?: string;
+}
+export interface SessionDetail extends Session {
+    messages: ChatMessage[];
+}
+export interface ChatMessage {
+    id: number;
+    role: 'user' | 'assistant';
+    content: string;
+    image_url?: string;
+    created_at: string;
+}
+export interface ChatResponse {
+    reply: string;
+    user: string;
+    session_id: number;
+}
+export interface UploadResponse {
+    image_urls: string[];
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export const authApi = {
+    signup: (email: string, username: string, password: string) =>
+        apiFetch<TokenResponse>('/auth/signup', {
+            method: 'POST',
+            body: JSON.stringify({ email, username, password }),
+        }),
+
+    login: (email: string, password: string) =>
+        apiFetch<TokenResponse>('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+        }),
+
+    me: (token: string) =>
+        apiFetch<UserInfo>('/auth/me', { token }),
+};
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+export const sessionsApi = {
+    list: (token: string) =>
+        apiFetch<Session[]>('/sessions', { token }),
+
+    create: (token: string, title = 'New Chat') =>
+        apiFetch<Session>('/sessions', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ title }),
+        }),
+
+    get: (token: string, sessionId: number) =>
+        apiFetch<SessionDetail>(`/sessions/${sessionId}`, { token }),
+
+    rename: (token: string, sessionId: number, title: string) =>
+        apiFetch<Session>(`/sessions/${sessionId}`, {
+            method: 'PATCH',
+            token,
+            body: JSON.stringify({ title }),
+        }),
+
+    delete: (token: string, sessionId: number) =>
+        apiFetch(`/sessions/${sessionId}`, { method: 'DELETE', token }),
+};
+
+// ── Files / Upload ────────────────────────────────────────────────────────────
+export const fileApi = {
+    upload: async (token: string, fileUris: string[]) => {
+        const formData = new FormData();
+
+        for (let i = 0; i < fileUris.length; i++) {
+            const uri = fileUris[i];
+            const extension = uri.split('.').pop()?.toLowerCase() || 'jpg';
+            const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+            const name = `upload_${i}.${extension}`;
+
+            if (Platform.OS === 'web') {
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                formData.append('files', blob, name);
+            } else {
+                // @ts-ignore - React Native FormData accepts an object with uri, type, and name
+                formData.append('files', {
+                    uri: uri,
+                    type: mimeType,
+                    name: name
+                });
+            }
+        }
+
+        const res = await fetch(`${BASE_URL}/upload`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                // Don't set Content-Type here; fetch will automatically set it with the boundary for FormData
+            },
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || `Upload failed with status ${res.status}`);
+        }
+
+        return res.json() as Promise<UploadResponse>;
+    }
+};
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+export const chatApi = {
+    send: (token: string, message: string, session_id?: number | null, image_urls?: string[]) =>
+        apiFetch<ChatResponse>('/chat', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ message, session_id: session_id ?? null, image_urls }),
+        }),
+};
