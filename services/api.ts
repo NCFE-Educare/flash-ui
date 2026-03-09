@@ -117,6 +117,12 @@ export const integrationsApi = {
         apiFetch<{ url?: string }>('/auth/calendar/connect', { token }),
     calendarDisconnect: (token: string) =>
         apiFetch('/auth/calendar/disconnect', { method: 'DELETE', token }),
+    slidesStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/slides/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    slidesConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/slides/connect', { token }),
+    slidesDisconnect: (token: string) =>
+        apiFetch('/auth/slides/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

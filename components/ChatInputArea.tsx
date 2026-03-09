@@ -76,6 +76,7 @@ export default function ChatInputArea({
   const [docsConnected, setDocsConnected] = useState(false);
   const [driveConnected, setDriveConnected] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
+  const [slidesConnected, setSlidesConnected] = useState(false);
   const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
 
   const checkIntegrations = async () => {
@@ -92,6 +93,8 @@ export default function ChatInputArea({
       setDriveConnected(!!dr);
       const c = await integrationsApi.calendarStatus(token);
       setCalendarConnected(!!c);
+      const sl = await integrationsApi.slidesStatus(token);
+      setSlidesConnected(!!sl);
     } catch (e) {
       console.error("Error checking integrations", e);
     } finally {
@@ -217,6 +220,29 @@ export default function ChatInputArea({
         }
       } catch (e: any) {
         Alert.alert("Error connecting Calendar", e.message);
+      }
+    }
+  };
+
+  const handleSlidesAction = async () => {
+    if (!token) return;
+    if (slidesConnected) {
+      await integrationsApi.slidesDisconnect(token);
+      setSlidesConnected(false);
+    } else {
+      try {
+        const res = await integrationsApi.slidesConnect(token);
+        const url =
+          res?.url ||
+          (res as any)?.auth_url ||
+          (typeof res === "string" ? res : null);
+        if (url) {
+          Linking.openURL(url);
+        } else {
+          Alert.alert("Error", "Invalid Google OAuth URL returned.");
+        }
+      } catch (e: any) {
+        Alert.alert("Error connecting Slides", e.message);
       }
     }
   };
@@ -648,11 +674,13 @@ export default function ChatInputArea({
         docsConnected={docsConnected}
         driveConnected={driveConnected}
         calendarConnected={calendarConnected}
+        slidesConnected={slidesConnected}
         onGmailAction={handleGmailAction}
         onSheetsAction={handleSheetsAction}
         onDocsAction={handleDocsAction}
         onDriveAction={handleDriveAction}
         onCalendarAction={handleCalendarAction}
+        onSlidesAction={handleSlidesAction}
         loading={isCheckingIntegrations}
         hPad={hPad}
       />
@@ -702,11 +730,13 @@ function IntegrationsMenu({
   docsConnected,
   driveConnected,
   calendarConnected,
+  slidesConnected,
   onGmailAction,
   onSheetsAction,
   onDocsAction,
   onDriveAction,
   onCalendarAction,
+  onSlidesAction,
   loading,
   hPad,
 }: any) {
@@ -896,6 +926,41 @@ function IntegrationsMenu({
               </TouchableOpacity>
             )}
           </View>
+          <View style={s.item}>
+            <View style={s.itemLeft}>
+              <Image
+                source={{
+                  uri: "https://img.icons8.com/color/48/google-slides.png",
+                }}
+                style={{ width: 22, height: 22 }}
+              />
+              <Text style={s.itemText}>Google Slides</Text>
+            </View>
+            {slidesConnected ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <View style={s.activeBadge}>
+                  <View style={s.activeDot} />
+                  <Text style={s.activeText}>Active</Text>
+                </View>
+                <TouchableOpacity onPress={onSlidesAction} style={s.iconBtn}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={16}
+                    color={colors.textError || "#ff4444"}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[s.btn, s.btnConnect]}
+                onPress={onSlidesAction}
+              >
+                <Text style={[s.btnText, s.btnTextConnect]}>Connect</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </>
       )}
     </View>
@@ -909,31 +974,38 @@ const getIntegrationsStyles = (colors: any, hPad: number) =>
       bottom: 125,
       right: hPad + 40,
       backgroundColor: colors.surface,
-      borderRadius: 12,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.borderDark,
-      padding: 16,
-      width: 280,
-      elevation: 5,
+      padding: 12,
+      width: 290,
+      elevation: 8,
       shadowColor: "#000",
-      shadowOpacity: 0.1,
-      shadowRadius: 10,
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
       zIndex: 1000,
     },
     header: {
       flexDirection: "row",
       justifyContent: "space-between",
-      marginBottom: 16,
+      marginBottom: 12,
       alignItems: "center",
+      paddingHorizontal: 4,
     },
-    title: { fontSize: 14, fontFamily: Fonts.semibold, color: colors.text },
+    title: { fontSize: 16, fontFamily: Fonts.semibold, color: colors.text },
     item: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      marginBottom: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceHover,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
-    itemLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+    itemLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
     itemText: { fontSize: 13, fontFamily: Fonts.medium, color: colors.text },
     btn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
     btnConnect: { backgroundColor: colors.primary },
