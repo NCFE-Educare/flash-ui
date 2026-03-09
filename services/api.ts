@@ -111,6 +111,12 @@ export const integrationsApi = {
         apiFetch<{ url?: string }>('/auth/drive/connect', { token }),
     driveDisconnect: (token: string) =>
         apiFetch('/auth/drive/disconnect', { method: 'DELETE', token }),
+    calendarStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/calendar/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    calendarConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/calendar/connect', { token }),
+    calendarDisconnect: (token: string) =>
+        apiFetch('/auth/calendar/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -212,7 +218,7 @@ export const chatApi = {
             token,
             body: JSON.stringify({ message, session_id: session_id ?? null, image_urls }),
         }),
-    sendStream: async (token: string, message: string, session_id?: number | null, image_urls?: string[], document_urls?: string[]) => {
+    sendStream: async (token: string, message: string, session_id?: number | null, image_urls?: string[], document_urls?: string[], signal?: AbortSignal) => {
         const response = await fetch(`${BASE_URL}/chat/stream`, {
             method: 'POST',
             headers: {
@@ -220,6 +226,7 @@ export const chatApi = {
                 Authorization: `Bearer ${token}`
             },
             body: JSON.stringify({ message, session_id: session_id ?? null, image_urls, document_urls }),
+            signal,
         });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));

@@ -44,6 +44,9 @@ export default function ChatScreen() {
     const [loadingSessions, setLoadingSessions] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const flatListRef = useRef<FlatList>(null);
 
@@ -137,8 +140,12 @@ export default function ChatScreen() {
 
         const aiId = tempId + 1;
 
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        setIsGenerating(true);
+
         try {
-            const res = await chatApi.sendStream(token, text, activeSessionId, imageUrls, documentUrls);
+            const res = await chatApi.sendStream(token, text, activeSessionId, imageUrls, documentUrls, controller.signal);
             if (!res.body) {
                 throw new Error("Streaming not supported on this platform.");
             }
@@ -188,12 +195,27 @@ export default function ChatScreen() {
             }
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         } catch (err: any) {
-            console.error('Chat error:', err);
-            Alert.alert('Error', err.message || 'Failed to send message');
-            setMessages(prev => prev.filter(m => m.id !== tempId));
+            if (err.name === 'AbortError') {
+                console.log('Stream aborted by user');
+            } else {
+                console.error('Chat error:', err);
+                Alert.alert('Error', err.message || 'Failed to send message');
+                setMessages(prev => prev.filter(m => m.id !== tempId));
+            }
         } finally {
             setIsTyping(false);
+            setIsGenerating(false);
+            abortControllerRef.current = null;
         }
+    };
+
+    const stopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        setIsGenerating(false);
+        setIsTyping(false);
     };
 
 
@@ -272,7 +294,11 @@ export default function ChatScreen() {
                         )}
 
                         {/* Input */}
-                        <ChatInputArea onSend={(t, imgs, docs) => sendMessage(t, imgs, docs)} />
+                        <ChatInputArea
+                            onSend={(t, imgs, docs) => sendMessage(t, imgs, docs)}
+                            isGenerating={isGenerating}
+                            onStop={stopGeneration}
+                        />
                     </View>
 
                     {/* ── Mobile/tablet drawer overlay ────────────────────────── */}
