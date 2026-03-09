@@ -51,7 +51,9 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     image_url?: string;
+    document_urls?: string[];
     created_at: string;
+    isStreaming?: boolean;
 }
 export interface ChatResponse {
     reply: string;
@@ -60,6 +62,9 @@ export interface ChatResponse {
 }
 export interface UploadResponse {
     image_urls: string[];
+}
+export interface DocumentUploadResponse {
+    document_urls: string[];
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -78,6 +83,34 @@ export const authApi = {
 
     me: (token: string) =>
         apiFetch<UserInfo>('/auth/me', { token }),
+};
+
+// ── Integrations ──────────────────────────────────────────────────────────────
+export const integrationsApi = {
+    gmailStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/gmail/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    gmailConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/gmail/connect', { token }),
+    gmailDisconnect: (token: string) =>
+        apiFetch('/auth/gmail/disconnect', { method: 'DELETE', token }),
+    sheetsStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/sheets/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    sheetsConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/sheets/connect', { token }),
+    sheetsDisconnect: (token: string) =>
+        apiFetch('/auth/sheets/disconnect', { method: 'DELETE', token }),
+    docsStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/docs/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    docsConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/docs/connect', { token }),
+    docsDisconnect: (token: string) =>
+        apiFetch('/auth/docs/disconnect', { method: 'DELETE', token }),
+    driveStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/drive/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    driveConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/drive/connect', { token }),
+    driveDisconnect: (token: string) =>
+        apiFetch('/auth/drive/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -149,6 +182,28 @@ export const fileApi = {
     }
 };
 
+// ── Document Upload ───────────────────────────────────────────────────────────
+export const documentApi = {
+    upload: async (token: string, files: File[]): Promise<DocumentUploadResponse> => {
+        const formData = new FormData();
+        for (const file of files) {
+            formData.append('files', file, file.name);
+        }
+        const res = await fetch(`${BASE_URL}/upload/document`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || `Document upload failed with status ${res.status}`);
+        }
+        return res.json();
+    },
+};
+
 // ── Chat ──────────────────────────────────────────────────────────────────────
 export const chatApi = {
     send: (token: string, message: string, session_id?: number | null, image_urls?: string[]) =>
@@ -157,4 +212,19 @@ export const chatApi = {
             token,
             body: JSON.stringify({ message, session_id: session_id ?? null, image_urls }),
         }),
+    sendStream: async (token: string, message: string, session_id?: number | null, image_urls?: string[], document_urls?: string[]) => {
+        const response = await fetch(`${BASE_URL}/chat/stream`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ message, session_id: session_id ?? null, image_urls, document_urls }),
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || `Stream failed with status ${response.status}`);
+        }
+        return response;
+    },
 };

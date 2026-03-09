@@ -11,6 +11,8 @@ import {
     ActivityIndicator,
     Alert,
     Image,
+    Animated,
+    Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,11 +20,13 @@ import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import 'text-encoding-polyfill';
 import { sessionsApi, chatApi, Session, ChatMessage } from '../services/api';
 import Sidebar from '../components/Sidebar';
 import ChatTopBar from '../components/ChatTopBar';
 import ChatWelcome from '../components/ChatWelcome';
 import ChatInputArea from '../components/ChatInputArea';
+import Markdown from 'react-native-markdown-display';
 
 export default function ChatScreen() {
     const r = useResponsive();
@@ -81,50 +85,117 @@ export default function ChatScreen() {
         }
     };
 
+    // ── SSE Parser (matches backend spec: line-by-line, blank-line boundary) ──
+    const readSSE = async function* (stream: any) {
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            // Keep the last (possibly incomplete) line in the buffer
+            buffer = lines.pop() || '';
+            let eventType = '';
+            let dataStr = '';
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7);
+                } else if (line.startsWith('data: ')) {
+                    dataStr = line.slice(6);
+                } else if (line === '' && dataStr) {
+                    // Blank line = end of one SSE event
+                    try {
+                        yield { type: eventType, data: JSON.parse(dataStr) };
+                    } catch (e) {
+                        console.error('Failed to parse SSE data:', dataStr, e);
+                    }
+                    eventType = '';
+                    dataStr = '';
+                }
+            }
+        }
+    };
+
     // ── Sending Message ──
-    const sendMessage = async (text: string, imageUrls?: string[]) => {
+    const sendMessage = async (text: string, imageUrls?: string[], documentUrls?: string[]) => {
         if (!token) return;
 
-        // Optimistic UI update
         const tempId = Date.now();
         const newUserMsg: ChatMessage = {
             id: tempId,
             role: 'user',
             content: text,
             image_url: imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : undefined,
+            document_urls: documentUrls,
             created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, newUserMsg]);
         setIsTyping(true);
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
+        const aiId = tempId + 1;
+
         try {
-            const res = await chatApi.send(token, text, activeSessionId, imageUrls);
-
-            const aiMsg: ChatMessage = {
-                id: tempId + 1,
-                role: 'assistant',
-                content: res.reply,
-                created_at: new Date().toISOString(),
-            };
-
-            setMessages(prev => [...prev, aiMsg]);
-
-            // If this was a new session (activeSessionId was null), we now have a session_id
-            if (!activeSessionId) {
-                setActiveSessionId(res.session_id);
-                await loadSessions(); // refresh the sidebar
+            const res = await chatApi.sendStream(token, text, activeSessionId, imageUrls, documentUrls);
+            if (!res.body) {
+                throw new Error("Streaming not supported on this platform.");
             }
 
+            // Add streaming placeholder immediately so text events can update it
+            setMessages(prev => [...prev, {
+                id: aiId,
+                role: 'assistant',
+                content: '',
+                created_at: new Date().toISOString(),
+                isStreaming: true,
+            }]);
+            setIsTyping(false);
+
+            let currentContent = '';
+
+            for await (const { type, data } of readSSE(res.body)) {
+                if (type === 'text') {
+                    // Append each token chunk — render as plain Text during streaming
+                    // to avoid broken mid-stream markdown
+                    currentContent += data.content;
+                    setMessages(prev => prev.map(m =>
+                        m.id === aiId ? { ...m, content: currentContent } : m
+                    ));
+                } else if (type === 'tool_start') {
+                    // Show a tool-use indicator inline
+                    currentContent += `\n\n*Using ${data.tool}...*\n\n`;
+                    setMessages(prev => prev.map(m =>
+                        m.id === aiId ? { ...m, content: currentContent } : m
+                    ));
+                } else if (type === 'tool_end') {
+                    // Tool finished; next text event will bring the result
+                } else if (type === 'done') {
+                    // Replace streamed chunks with the final clean reply
+                    // and switch off streaming mode so Markdown is rendered
+                    setMessages(prev => prev.map(m =>
+                        m.id === aiId
+                            ? { ...m, content: data.reply, isStreaming: false }
+                            : m
+                    ));
+
+                    if (!activeSessionId) {
+                        setActiveSessionId(data.session_id);
+                        await loadSessions();
+                    }
+                }
+            }
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         } catch (err: any) {
+            console.error('Chat error:', err);
             Alert.alert('Error', err.message || 'Failed to send message');
-            // Remove the optimistic message on failure
             setMessages(prev => prev.filter(m => m.id !== tempId));
         } finally {
             setIsTyping(false);
         }
     };
+
 
     // ── Layout helpers ──
     const showPersistentSidebar = r.isDesktop && !sidebarCollapsed;
@@ -188,19 +259,20 @@ export default function ChatScreen() {
                                     />
                                 )}
                                 ListFooterComponent={isTyping ? (
-                                    <MessageBubble
-                                        msg={{ id: 0, role: 'assistant', content: '...', created_at: '' }}
-                                        isDesktop={r.isDesktop}
-                                        username={user?.username || 'U'}
-                                        colors={colors}
-                                        isTyping
-                                    />
+                                    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginBottom: 24, paddingHorizontal: chatPadH }}>
+                                        <LinearGradient colors={[colors.primary, colors.primaryLight]} style={{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+                                            <Ionicons name="sparkles" size={13} color="#fff" />
+                                        </LinearGradient>
+                                        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderBottomLeftRadius: 4, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }}>
+                                            <TypingDots colors={colors} />
+                                        </View>
+                                    </View>
                                 ) : null}
                             />
                         )}
 
                         {/* Input */}
-                        <ChatInputArea onSend={sendMessage} />
+                        <ChatInputArea onSend={(t, imgs, docs) => sendMessage(t, imgs, docs)} />
                     </View>
 
                     {/* ── Mobile/tablet drawer overlay ────────────────────────── */}
@@ -252,10 +324,68 @@ function MobileTopBar({ onOpenDrawer, colors }: { onOpenDrawer(): void, colors: 
     );
 }
 
+// ── Animated Typing Indicator ─────────────────────────────────────
+function TypingDots({ colors }: { colors: any }) {
+    if (Platform.OS === 'web') {
+        const dotStyle = {
+            width: '8px',
+            height: '8px',
+            borderRadius: '4px',
+            backgroundColor: colors.primary,
+            animation: 'typingBounce 1.4s infinite ease-in-out'
+        };
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 2, height: 24 }}>
+                {/* Inject CSS keyframes globally for web */}
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+                    @keyframes typingBounce {
+                        0%, 80%, 100% { transform: translateY(0); }
+                        40% { transform: translateY(-6px); }
+                    }
+                `}} />
+                <div style={{ ...dotStyle, animationDelay: '-0.32s' }} />
+                <div style={{ ...dotStyle, animationDelay: '-0.16s' }} />
+                <div style={{ ...dotStyle, animationDelay: '0s' }} />
+            </View>
+        );
+    }
+
+    // Fallback for native (iOS/Android)
+    const dots = [useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current, useRef(new Animated.Value(0)).current];
+    useEffect(() => {
+        const bounce = (dot: Animated.Value, delay: number) =>
+            Animated.loop(
+                Animated.sequence([
+                    Animated.delay(delay),
+                    Animated.timing(dot, { toValue: -6, duration: 250, useNativeDriver: true }),
+                    Animated.timing(dot, { toValue: 0, duration: 250, useNativeDriver: true }),
+                    Animated.delay(400),
+                ])
+            );
+        const anims = dots.map((d, i) => bounce(d, i * 150));
+        anims.forEach(a => a.start());
+        return () => anims.forEach(a => a.stop());
+    }, []);
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 2, height: 24 }}>
+            {dots.map((dot, i) => (
+                <Animated.View key={i} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, transform: [{ translateY: dot }] }} />
+            ))}
+        </View>
+    );
+}
+
 // ── Message Bubble ─────────────────────────────────────────────────────────
 function MessageBubble({ msg, isDesktop, username, colors, isTyping }: { msg: ChatMessage; isDesktop: boolean; username: string, colors: any, isTyping?: boolean }) {
     const isUser = msg.role === 'user';
     const b = getBubbleStyles(colors);
+    // Render plain Text during streaming to avoid broken mid-stream Markdown,
+    // switch to Markdown only when the final reply has arrived.
+    const renderAIContent = msg.isStreaming
+        ? <Text style={b.text}>{msg.content}</Text>
+        : <Markdown style={getMarkdownStyles(colors) as any}>{msg.content}</Markdown>;
 
     let parsedImageUrls: string[] = [];
     if (msg.image_url) {
@@ -265,6 +395,25 @@ function MessageBubble({ msg, isDesktop, username, colors, isTyping }: { msg: Ch
             parsedImageUrls = [msg.image_url];
         }
     }
+
+    const docUrls: string[] = msg.document_urls || [];
+
+    const getDocIconName = (url: string): any => {
+        const ext = url.split('.').pop()?.toLowerCase();
+        if (ext === 'pdf') return 'document-text';
+        if (ext === 'docx' || ext === 'doc') return 'document';
+        if (ext === 'pptx' || ext === 'ppt') return 'easel';
+        return 'document';
+    };
+
+    const getDocLabel = (url: string) => {
+        // Strip the hash prefix added by the backend (e.g. "abc123.pdf" → show as-is, but try to shorten)
+        const parts = url.split('/');
+        return parts[parts.length - 1] || url;
+    };
+
+    const hasDocs = docUrls.length > 0;
+    const hasImages = parsedImageUrls.length > 0;
 
     return (
         <View style={[
@@ -282,14 +431,14 @@ function MessageBubble({ msg, isDesktop, username, colors, isTyping }: { msg: Ch
                 isUser ? b.userBubble : b.aiBubble,
                 { maxWidth: isDesktop ? '60%' : '85%' },
                 isTyping ? { minWidth: 60, alignItems: 'center' } : undefined,
-                parsedImageUrls.length > 0 ? { paddingHorizontal: 8, paddingVertical: 8 } : undefined
+                (hasImages || hasDocs) ? { paddingHorizontal: 8, paddingVertical: 8 } : undefined
             ]}>
                 {isTyping ? (
-                    <ActivityIndicator size="small" color={colors.text} />
+                    <TypingDots colors={colors} />
                 ) : (
                     <>
-                        {parsedImageUrls.length > 0 && (
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: msg.content ? 8 : 0 }}>
+                        {hasImages && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: (msg.content || hasDocs) ? 8 : 0 }}>
                                 {parsedImageUrls.map((url, i) => (
                                     <Image
                                         key={i}
@@ -300,7 +449,38 @@ function MessageBubble({ msg, isDesktop, username, colors, isTyping }: { msg: Ch
                                 ))}
                             </View>
                         )}
-                        {!!msg.content && <Text style={[b.text, isUser && b.userText]}>{msg.content}</Text>}
+                        {hasDocs && (
+                            <View style={{ gap: 6, marginBottom: msg.content ? 8 : 0 }}>
+                                {docUrls.map((url, i) => (
+                                    <TouchableOpacity
+                                        key={i}
+                                        style={[b.docChip, isUser && b.docChipUser]}
+                                        activeOpacity={0.75}
+                                        onPress={() => {
+                                            const fullUrl = url.startsWith('http') ? url : `http://127.0.0.1:8000${url}`;
+                                            if (Platform.OS === 'web') {
+                                                (window as any).open(fullUrl, '_blank');
+                                            } else {
+                                                Linking.openURL(fullUrl);
+                                            }
+                                        }}
+                                    >
+                                        <Ionicons name={getDocIconName(url)} size={16} color={isUser ? 'rgba(255,255,255,0.9)' : colors.primary} />
+                                        <Text style={[b.docChipText, isUser && b.docChipTextUser]} numberOfLines={1}>
+                                            {getDocLabel(url)}
+                                        </Text>
+                                        <Ionicons name="open-outline" size={12} color={isUser ? 'rgba(255,255,255,0.6)' : colors.textSubtle} />
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                        {!!msg.content && (
+                            isUser ? (
+                                <Text style={[b.text, b.userText]}>{msg.content}</Text>
+                            ) : (
+                                renderAIContent
+                            )
+                        )}
                     </>
                 )}
             </View>
@@ -338,4 +518,44 @@ const getBubbleStyles = (colors: any) => StyleSheet.create({
     aiBubble: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 4 },
     text: { fontSize: 15, fontFamily: Fonts.regular, color: colors.text, lineHeight: 24 },
     userText: { color: '#fff' },
+    docChip: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 6,
+        backgroundColor: colors.primaryBg,
+        borderWidth: 1,
+        borderColor: colors.primary + '44',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+    },
+    docChipUser: {
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        borderColor: 'rgba(255,255,255,0.35)',
+    },
+    docChipText: {
+        flex: 1,
+        fontSize: 12,
+        fontFamily: Fonts.medium,
+        color: colors.text,
+    },
+    docChipTextUser: {
+        color: '#fff',
+    },
+});
+
+const getMarkdownStyles = (colors: any) => StyleSheet.create({
+    body: { fontSize: 15, fontFamily: Fonts.regular, color: colors.text, lineHeight: 24 },
+    code_block: { backgroundColor: colors.surfaceSecondary, borderRadius: 8, padding: 12, marginVertical: 8, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: colors.text, fontSize: 13 },
+    code_inline: { backgroundColor: colors.surfaceHover, borderRadius: 4, padding: 4, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: colors.text },
+    heading1: { fontSize: 24, fontFamily: Fonts.bold, color: colors.text, marginVertical: 8 },
+    heading2: { fontSize: 20, fontFamily: Fonts.bold, color: colors.text, marginVertical: 8 },
+    heading3: { fontSize: 18, fontFamily: Fonts.semibold, color: colors.text, marginVertical: 8 },
+    heading4: { fontSize: 16, fontFamily: Fonts.semibold, color: colors.text, marginVertical: 8 },
+    link: { color: colors.primary, textDecorationLine: 'underline' },
+    paragraph: { marginBottom: 8, marginTop: 0 },
+    list_item: { marginBottom: 4 },
+    strong: { fontFamily: Fonts.bold },
+    em: { fontStyle: 'italic' },
+    blockquote: { borderLeftWidth: 4, borderLeftColor: colors.border, paddingLeft: 12, opacity: 0.8, marginVertical: 8 },
 });
