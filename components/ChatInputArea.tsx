@@ -77,6 +77,7 @@ export default function ChatInputArea({
   const [driveConnected, setDriveConnected] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [slidesConnected, setSlidesConnected] = useState(false);
+  const [formsConnected, setFormsConnected] = useState(false);
   const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
 
   const checkIntegrations = async () => {
@@ -95,6 +96,8 @@ export default function ChatInputArea({
       setCalendarConnected(!!c);
       const sl = await integrationsApi.slidesStatus(token);
       setSlidesConnected(!!sl);
+      const f = await integrationsApi.formsStatus(token);
+      setFormsConnected(!!f);
     } catch (e) {
       console.error("Error checking integrations", e);
     } finally {
@@ -151,6 +154,29 @@ export default function ChatInputArea({
         }
       } catch (e: any) {
         Alert.alert("Error connecting Sheets", e.message);
+      }
+    }
+  };
+
+  const handleFormsAction = async () => {
+    if (!token) return;
+    if (formsConnected) {
+      await integrationsApi.formsDisconnect(token);
+      setFormsConnected(false);
+    } else {
+      try {
+        const res = await integrationsApi.formsConnect(token);
+        const url =
+          res?.url ||
+          (res as any)?.auth_url ||
+          (typeof res === "string" ? res : null);
+        if (url) {
+          Linking.openURL(url);
+        } else {
+          Alert.alert("Error", "Invalid Google OAuth URL returned.");
+        }
+      } catch (e: any) {
+        Alert.alert("Error connecting Forms", e.message);
       }
     }
   };
@@ -603,11 +629,11 @@ export default function ChatInputArea({
               style={
                 Platform.OS === "web"
                   ? {
-                      display: "flex",
-                      animation: docBarHovered
-                        ? "docSparkle 0.55s ease forwards"
-                        : "none",
-                    }
+                    display: "flex",
+                    animation: docBarHovered
+                      ? "docSparkle 0.55s ease forwards"
+                      : "none",
+                  }
                   : undefined
               }
             >
@@ -627,13 +653,13 @@ export default function ChatInputArea({
               style={
                 Platform.OS === "web"
                   ? {
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      animation: docBarHovered
-                        ? "attachSlide 0.2s ease forwards"
-                        : "none",
-                    }
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    animation: docBarHovered
+                      ? "attachSlide 0.2s ease forwards"
+                      : "none",
+                  }
                   : undefined
               }
             >
@@ -675,12 +701,14 @@ export default function ChatInputArea({
         driveConnected={driveConnected}
         calendarConnected={calendarConnected}
         slidesConnected={slidesConnected}
+        formsConnected={formsConnected}
         onGmailAction={handleGmailAction}
         onSheetsAction={handleSheetsAction}
         onDocsAction={handleDocsAction}
         onDriveAction={handleDriveAction}
         onCalendarAction={handleCalendarAction}
         onSlidesAction={handleSlidesAction}
+        onFormsAction={handleFormsAction}
         loading={isCheckingIntegrations}
         hPad={hPad}
       />
@@ -731,12 +759,14 @@ function IntegrationsMenu({
   driveConnected,
   calendarConnected,
   slidesConnected,
+  formsConnected,
   onGmailAction,
   onSheetsAction,
   onDocsAction,
   onDriveAction,
   onCalendarAction,
   onSlidesAction,
+  onFormsAction,
   loading,
   hPad,
 }: any) {
@@ -956,6 +986,41 @@ function IntegrationsMenu({
               <TouchableOpacity
                 style={[s.btn, s.btnConnect]}
                 onPress={onSlidesAction}
+              >
+                <Text style={[s.btnText, s.btnTextConnect]}>Connect</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={s.item}>
+            <View style={s.itemLeft}>
+              <Image
+                source={{
+                  uri: "https://img.icons8.com/color/48/google-forms.png",
+                }}
+                style={{ width: 22, height: 22 }}
+              />
+              <Text style={s.itemText}>Google Forms</Text>
+            </View>
+            {formsConnected ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <View style={s.activeBadge}>
+                  <View style={s.activeDot} />
+                  <Text style={s.activeText}>Active</Text>
+                </View>
+                <TouchableOpacity onPress={onFormsAction} style={s.iconBtn}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={16}
+                    color={colors.textError || "#ff4444"}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[s.btn, s.btnConnect]}
+                onPress={onFormsAction}
               >
                 <Text style={[s.btnText, s.btnTextConnect]}>Connect</Text>
               </TouchableOpacity>

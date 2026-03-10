@@ -7,6 +7,7 @@ import {
     ScrollView,
     StyleSheet,
     Alert,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts } from '../constants/theme';
@@ -72,9 +73,7 @@ export default function Sidebar({
             {/* Header */}
             <View style={s.header}>
                 <View style={s.logoRow}>
-                    <View style={s.logoBox}>
-                        <Ionicons name="sparkles" size={15} color="#fff" />
-                    </View>
+                    <Image source={require('../assets/logo.png')} style={{ width: 22, height: 22 }} resizeMode="contain" />
                     {!compact && <Text style={s.logoText}>Cortex</Text>}
                 </View>
                 <TouchableOpacity onPress={onClose} style={s.collapseBtn}>

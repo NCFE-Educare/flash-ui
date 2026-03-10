@@ -21,6 +21,7 @@ import { useResponsive } from "../hooks/useResponsive";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
+import EventSource from "react-native-sse";
 import { sessionsApi, chatApi, Session, ChatMessage } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
@@ -68,7 +69,55 @@ export default function ChatScreen() {
     loadSessions();
   }, [loadSessions]);
 
+  // ── Global SSE Notifications ──
+  useEffect(() => {
+    if (!token) return;
+
+    // The backend endpoint accepts the token via query param
+    const url = `http://127.0.0.1:8000/chat/notifications?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+
+    es.addEventListener("response_done" as any, (event: any) => {
+      try {
+        const data = JSON.parse(event.data || "{}");
+        const finishedSessionId = data.session_id;
+
+        // Refresh the session list to show updated preview/title
+        loadSessions();
+
+        // If the session that just finished generating in the background
+        // is the currently active one, refresh its messages so they appear
+        if (finishedSessionId === activeSessionId) {
+          sessionsApi.get(token, finishedSessionId)
+            .then(detail => {
+              setMessages(detail.messages);
+              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+            })
+            .catch(e => console.error("Failed to refresh active session via SSE", e));
+        }
+
+      } catch (e) {
+        console.error("Error parsing response_done event", e);
+      }
+    });
+
+    es.addEventListener("error", (err) => {
+      console.warn("SSE Error:", err);
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [token, loadSessions, activeSessionId]);
+
   const selectSession = async (id: number | null) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsGenerating(false);
+      setIsTyping(false);
+    }
+
     setActiveSessionId(id);
     if (!id || !token) {
       setMessages([]);
@@ -334,32 +383,7 @@ export default function ChatScreen() {
                         paddingHorizontal: chatPadH,
                       }}
                     >
-                      <LinearGradient
-                        colors={[colors.primary, colors.primaryLight]}
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 8,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginTop: 2,
-                        }}
-                      >
-                        <Ionicons name="sparkles" size={13} color="#fff" />
-                      </LinearGradient>
-                      <View
-                        style={{
-                          paddingHorizontal: 16,
-                          paddingVertical: 12,
-                          borderRadius: 16,
-                          borderBottomLeftRadius: 4,
-                          backgroundColor: colors.surfaceSecondary,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                        }}
-                      >
-                        <TypingDots colors={colors} />
-                      </View>
+                      <AnimatedLogo colors={colors} />
                     </View>
                   ) : null
                 }
@@ -422,12 +446,7 @@ function MobileTopBar({
         <Ionicons name="menu-outline" size={22} color={colors.text} />
       </TouchableOpacity>
       <View style={styles.mobileLogoRow}>
-        <LinearGradient
-          colors={[colors.primaryDark, colors.primaryLight]}
-          style={styles.mobileLogoBox}
-        >
-          <Ionicons name="sparkles" size={12} color="#fff" />
-        </LinearGradient>
+        <Image source={require('../assets/logo.png')} style={{ width: 20, height: 20 }} resizeMode="contain" />
         <Text style={styles.mobileLogoText}>Cortex</Text>
       </View>
       <TouchableOpacity style={styles.mobileUpgradeBtn}>
@@ -437,98 +456,61 @@ function MobileTopBar({
   );
 }
 
-// ── Animated Typing Indicator ─────────────────────────────────────
-function TypingDots({ colors }: { colors: any }) {
+// ── Animated Logo Indicator ─────────────────────────────────────
+function AnimatedLogo({ colors }: { colors: any }) {
   if (Platform.OS === "web") {
-    const dotStyle = {
-      width: "8px",
-      height: "8px",
-      borderRadius: "4px",
-      backgroundColor: colors.primary,
-      animation: "typingBounce 1.4s infinite ease-in-out",
-    };
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 5,
-          paddingVertical: 6,
-          paddingHorizontal: 2,
-          height: 24,
-        }}
-      >
-        {/* Inject CSS keyframes globally for web */}
+      <View style={{ width: 24, height: 24 }}>
         <style
           dangerouslySetInnerHTML={{
             __html: `
-                    @keyframes typingBounce {
-                        0%, 80%, 100% { transform: translateY(0); }
-                        40% { transform: translateY(-6px); }
-                    }
-                `,
+              @keyframes pulseLogo {
+                0%, 100% { transform: scale(1); opacity: 0.8; }
+                50% { transform: scale(1.15); opacity: 1; }
+              }
+              .animated-logo-container {
+                animation: pulseLogo 1.5s infinite ease-in-out;
+                width: 24px;
+                height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+            `,
           }}
         />
-        <div style={{ ...dotStyle, animationDelay: "-0.32s" }} />
-        <div style={{ ...dotStyle, animationDelay: "-0.16s" }} />
-        <div style={{ ...dotStyle, animationDelay: "0s" }} />
+        <div className="animated-logo-container">
+          <Image
+            source={require('../assets/logo.png')}
+            style={{ width: 24, height: 24 }}
+            resizeMode="contain"
+          />
+        </div>
       </View>
     );
   }
 
-  // Fallback for native (iOS/Android)
-  const dots = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
-    const bounce = (dot: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, {
-            toValue: -6,
-            duration: 250,
-            useNativeDriver: true,
-          }),
-          Animated.timing(dot, {
-            toValue: 0,
-            duration: 250,
-            useNativeDriver: true,
-          }),
-          Animated.delay(400),
-        ]),
-      );
-    const anims = dots.map((d, i) => bounce(d, i * 150));
-    anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 750, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 750, useNativeDriver: true }),
+      ])
+    ).start();
   }, []);
 
   return (
-    <View
+    <Animated.Image
+      source={require('../assets/logo.png')}
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 5,
-        paddingVertical: 6,
-        paddingHorizontal: 2,
+        width: 24,
         height: 24,
+        transform: [{ scale: pulseAnim }],
       }}
-    >
-      {dots.map((dot, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: colors.primary,
-            transform: [{ translateY: dot }],
-          }}
-        />
-      ))}
-    </View>
+      resizeMode="contain"
+    />
   );
 }
 
@@ -587,12 +569,7 @@ function MessageBubble({
   return (
     <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 24 }]}>
       {!isUser && (
-        <LinearGradient
-          colors={[colors.primary, colors.primaryLight]}
-          style={b.aiAvatar}
-        >
-          <Ionicons name="sparkles" size={13} color="#fff" />
-        </LinearGradient>
+        <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
       )}
       <View
         style={[
@@ -616,7 +593,7 @@ function MessageBubble({
         ]}
       >
         {isTyping ? (
-          <TypingDots colors={colors} />
+          <AnimatedLogo colors={colors} />
         ) : (
           <>
             {hasImages && (
@@ -634,9 +611,9 @@ function MessageBubble({
                     source={{
                       uri:
                         url.startsWith("http") ||
-                        url.startsWith("blob:") ||
-                        url.startsWith("file:") ||
-                        url.startsWith("data:")
+                          url.startsWith("blob:") ||
+                          url.startsWith("file:") ||
+                          url.startsWith("data:")
                           ? url
                           : `http://127.0.0.1:8000${url}`,
                     }}

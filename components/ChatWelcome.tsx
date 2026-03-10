@@ -5,11 +5,11 @@ import {
     TouchableOpacity,
     ScrollView,
     StyleSheet,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
-import PurpleOrb from './PurpleOrb';
 import { useTheme } from '../context/ThemeContext';
 
 const CARDS = [
@@ -42,7 +42,7 @@ export default function ChatWelcome({ onSuggestion }: ChatWelcomeProps) {
     const { colors } = useTheme();
 
     // Responsive values
-    const orbSize = r.isDesktop ? 130 : r.isTablet ? 110 : 90;
+    const orbSize = r.isDesktop ? 80 : r.isTablet ? 64 : 50;
     const greetingSize = r.isDesktop ? 34 : r.isTablet ? 28 : 22;
     const subSize = r.isDesktop ? 28 : r.isTablet ? 22 : 18;
     const hPad = r.isDesktop ? 120 : r.isTablet ? 48 : 20;
@@ -55,7 +55,7 @@ export default function ChatWelcome({ onSuggestion }: ChatWelcomeProps) {
             showsVerticalScrollIndicator={false}
         >
             <View style={s.orbWrap}>
-                <PurpleOrb size={orbSize} />
+                <Image source={require('../assets/logo.png')} style={{ width: orbSize, height: orbSize }} resizeMode="contain" />
             </View>
 
             <Text style={[s.greeting, { fontSize: greetingSize }]}>Hello, Cortex User</Text>

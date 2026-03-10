@@ -123,6 +123,12 @@ export const integrationsApi = {
         apiFetch<{ url?: string }>('/auth/slides/connect', { token }),
     slidesDisconnect: (token: string) =>
         apiFetch('/auth/slides/disconnect', { method: 'DELETE', token }),
+    formsStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/forms/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    formsConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/forms/connect', { token }),
+    formsDisconnect: (token: string) =>
+        apiFetch('/auth/forms/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

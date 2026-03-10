@@ -9,12 +9,12 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
-import PurpleOrb from '../components/PurpleOrb';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
@@ -109,13 +109,11 @@ export default function LoginScreen() {
         >
             <LinearGradient colors={[colors.primaryDark, colors.primaryLight]} style={layoutStyles.mobileHeader}>
                 <View style={layoutStyles.logoRow}>
-                    <LinearGradient colors={['#fff', '#fff']} style={layoutStyles.logoBox}>
-                        <Ionicons name="sparkles" size={18} color={colors.primary} />
-                    </LinearGradient>
+                    <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
                     <Text style={layoutStyles.logoText}>Cortex</Text>
                 </View>
                 <View style={{ alignItems: 'center', marginTop: 24 }}>
-                    <PurpleOrb size={100} />
+                    <Image source={require('../assets/logo.png')} style={{ width: 70, height: 70 }} resizeMode="contain" />
                 </View>
                 <Text style={[layoutStyles.tagline, { fontSize: 20, marginTop: 16, marginBottom: 0 }]}>
                     Your intelligent AI companion
@@ -149,14 +147,12 @@ function LeftPanel({ large = false }: { large?: boolean }) {
             <View style={[s.deco, { bottom: -100, right: -60, width: 400, height: 400 }]} />
 
             <View style={s.logoRow}>
-                <LinearGradient colors={['#fff', '#fff']} style={s.logoBox}>
-                    <Ionicons name="sparkles" size={20} color={colors.primary} />
-                </LinearGradient>
+                <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
                 <Text style={s.logoText}>Cortex</Text>
             </View>
 
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <PurpleOrb size={large ? 160 : 130} />
+                <Image source={require('../assets/logo.png')} style={{ width: large ? 100 : 80, height: large ? 100 : 80 }} resizeMode="contain" />
                 <Text style={[s.tagline, { marginTop: 28 }]}>Your intelligent AI companion</Text>
                 <Text style={s.taglineSub}>
                     Ask anything, synthesize data, brainstorm{'\n'}ideas and get instant answers.

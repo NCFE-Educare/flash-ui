@@ -4,6 +4,7 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts } from '../constants/theme';
@@ -25,17 +26,13 @@ export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar }: ChatTo
             {/* Sidebar toggle (when collapsed on desktop) */}
             {sidebarCollapsed && (
                 <TouchableOpacity onPress={onToggleSidebar} style={s.sidebarToggle}>
-                    <View style={s.miniLogo}>
-                        <Ionicons name="sparkles" size={12} color="#fff" />
-                    </View>
+                    <Ionicons name="menu-outline" size={24} color={colors.text} />
                 </TouchableOpacity>
             )}
 
             {/* Cortex dropdown */}
             <TouchableOpacity style={s.dropdown} activeOpacity={0.8}>
-                <View style={s.miniLogo}>
-                    <Ionicons name="sparkles" size={11} color="#fff" />
-                </View>
+                <Image source={require('../assets/logo.png')} style={{ width: 18, height: 18 }} resizeMode="contain" />
                 <Text style={s.dropdownText}>Cortex</Text>
                 <Ionicons name="chevron-down" size={13} color={colors.textMuted} />
             </TouchableOpacity>
