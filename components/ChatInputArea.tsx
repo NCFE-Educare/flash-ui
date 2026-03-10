@@ -71,6 +71,8 @@ export default function ChatInputArea({
   const hPad = r.isDesktop ? 100 : r.isTablet ? 40 : 12;
 
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [inputHeight, setInputHeight] = useState(46);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [sheetsConnected, setSheetsConnected] = useState(false);
   const [docsConnected, setDocsConnected] = useState(false);
@@ -513,7 +515,10 @@ export default function ChatInputArea({
         )}
 
         <TextInput
-          style={s.input}
+          style={[
+            s.input,
+            { height: text ? Math.max(46, Math.min(inputHeight, 300)) : 46 }
+          ]}
           placeholder="Ask me anything..."
           placeholderTextColor={colors.textSubtle}
           value={text}
@@ -523,10 +528,28 @@ export default function ChatInputArea({
           onSubmitEditing={handleSend}
           blurOnSubmit
           editable={!isUploading}
+          onContentSizeChange={(e) => {
+            // Calculate the new height dynamically, clamping it appropriately
+            setInputHeight(e.nativeEvent.contentSize.height);
+          }}
         />
 
         {/* Toolbar row 1: chips + send */}
         <View style={s.toolbar1}>
+          {r.isMobile && (
+            <TouchableOpacity
+              style={s.toolbarBtn}
+              activeOpacity={0.7}
+              onPress={() => setShowMobileMenu(!showMobileMenu)}
+              disabled={isUploading}
+            >
+              <Ionicons
+                name="add-circle-outline"
+                size={22}
+                color={colors.textMuted}
+              />
+            </TouchableOpacity>
+          )}
           {!r.isMobile && (
             <TouchableOpacity
               style={s.toolbarBtn}
@@ -712,6 +735,41 @@ export default function ChatInputArea({
         loading={isCheckingIntegrations}
         hPad={hPad}
       />
+
+      {showMobileMenu && r.isMobile && (
+        <View style={s.mobileMenuContainer}>
+          <TouchableOpacity
+            style={s.mobileMenuItem}
+            onPress={() => {
+              setShowMobileMenu(false);
+              handlePickImage();
+            }}
+          >
+            <Ionicons name="image-outline" size={20} color={colors.text} />
+            <Text style={s.mobileMenuText}>Attach Image</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.mobileMenuItem}
+            onPress={() => {
+              setShowMobileMenu(false);
+              handlePickDocument();
+            }}
+          >
+            <Ionicons name="document-outline" size={20} color={colors.text} />
+            <Text style={s.mobileMenuText}>Attach Document</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.mobileMenuItem, { borderBottomWidth: 0 }]}
+            onPress={() => {
+              setShowMobileMenu(false);
+              toggleIntegrations();
+            }}
+          >
+            <Ionicons name="grid-outline" size={20} color={colors.text} />
+            <Text style={s.mobileMenuText}>Integrations</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -776,6 +834,9 @@ function IntegrationsMenu({
     <View style={s.container}>
       <View style={s.header}>
         <Text style={s.title}>Integrations</Text>
+        <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+          <Ionicons name="close" size={20} color={colors.textSubtle} />
+        </TouchableOpacity>
       </View>
       {loading ? (
         <ActivityIndicator style={{ padding: 20 }} color={colors.primary} />
@@ -1109,6 +1170,36 @@ const getStyles = (colors: any) =>
       backgroundColor: colors.surface,
       overflow: "hidden",
     },
+    mobileMenuContainer: {
+      position: "absolute",
+      bottom: 80,
+      left: 16,
+      backgroundColor: colors.surfaceHover,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.borderDark,
+      width: 220,
+      elevation: 5,
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      zIndex: 1000,
+      overflow: "hidden",
+    },
+    mobileMenuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderDark,
+      gap: 12,
+    },
+    mobileMenuText: {
+      fontSize: 14,
+      fontFamily: Fonts.medium,
+      color: colors.text,
+    },
     input: {
       paddingHorizontal: 16,
       paddingTop: 12,
@@ -1117,9 +1208,10 @@ const getStyles = (colors: any) =>
       fontFamily: Fonts.regular,
       color: colors.text,
       minHeight: 46,
-      maxHeight: 140,
+      maxHeight: 300,
       // @ts-ignore – web only
       outlineWidth: 0,
+      transition: "height 0.2s ease",
     },
     toolbar1: {
       flexDirection: "row",

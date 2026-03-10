@@ -299,7 +299,7 @@ export default function ChatScreen() {
   // ── Layout helpers ──
   const showPersistentSidebar = r.isDesktop && !sidebarCollapsed;
   const sidebarWidth = r.isTablet ? 200 : 250;
-  const chatPadH = r.isDesktop ? 120 : r.isTablet ? 40 : 0;
+  const chatPadH = r.isDesktop ? 120 : r.isTablet ? 40 : 16;
 
   const layout = getLayoutStyles(colors);
 
@@ -370,10 +370,11 @@ export default function ChatScreen() {
                     isDesktop={r.isDesktop}
                     username={user?.username || "U"}
                     colors={colors}
+                    isTyping={item.isStreaming && !item.content}
                   />
                 )}
                 ListFooterComponent={
-                  isTyping ? (
+                  isTyping && messages.length === 0 ? (
                     <View
                       style={{
                         flexDirection: "row",
@@ -569,7 +570,11 @@ function MessageBubble({
   return (
     <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 24 }]}>
       {!isUser && (
-        <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
+        isTyping ? (
+          <AnimatedLogo colors={colors} />
+        ) : (
+          <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
+        )
       )}
       <View
         style={[
@@ -584,17 +589,9 @@ function MessageBubble({
                 ? "85%"
                 : "90%",
           },
-          isTyping && !isUser
-            ? { minWidth: 60, alignItems: "flex-start", paddingTop: 6 }
-            : undefined,
-          (hasImages || hasDocs) && isUser
-            ? { paddingHorizontal: 8, paddingVertical: 8 }
-            : undefined,
         ]}
       >
-        {isTyping ? (
-          <AnimatedLogo colors={colors} />
-        ) : (
+        {!isTyping && (
           <>
             {hasImages && (
               <View
@@ -672,13 +669,7 @@ function MessageBubble({
           </>
         )}
       </View>
-      {isUser && (
-        <View style={b.userAvatar}>
-          <Text style={b.userAvatarText}>
-            {username.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-      )}
+      {/* User Avatar removed based on preference */}
     </View>
   );
 }
