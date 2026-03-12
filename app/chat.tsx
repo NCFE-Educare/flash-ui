@@ -22,12 +22,52 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
 import EventSource from "react-native-sse";
-import { sessionsApi, chatApi, Session, ChatMessage } from "../services/api";
+import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent } from "../services/api";
 import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
 import ChatWelcome from "../components/ChatWelcome";
 import ChatInputArea from "../components/ChatInputArea";
 import Markdown from "react-native-markdown-display";
+
+// ── Thinking Cache (persists across refresh / session switches) ─────────────
+const THINKING_CACHE_KEY = "cortex_thinking_cache";
+
+function saveThinkingToCache(
+  sessionId: number,
+  content: string,
+  thinking: string,
+  toolEvents: ToolEvent[],
+) {
+  if (!thinking && toolEvents.length === 0) return;
+  try {
+    const raw = Platform.OS === "web" ? localStorage.getItem(THINKING_CACHE_KEY) : null;
+    const cache: Record<string, { thinking: string; toolEvents: ToolEvent[] }> = raw ? JSON.parse(raw) : {};
+    const key = `${sessionId}:${content.substring(0, 200)}`;
+    cache[key] = { thinking, toolEvents };
+    if (Platform.OS === "web") {
+      localStorage.setItem(THINKING_CACHE_KEY, JSON.stringify(cache));
+    }
+  } catch {}
+}
+
+function hydrateThinkingFromCache(sessionId: number, msgs: ChatMessage[]): ChatMessage[] {
+  try {
+    const raw = Platform.OS === "web" ? localStorage.getItem(THINKING_CACHE_KEY) : null;
+    if (!raw) return msgs;
+    const cache: Record<string, { thinking: string; toolEvents: ToolEvent[] }> = JSON.parse(raw);
+    return msgs.map((m) => {
+      if (m.role !== "assistant" || !m.content) return m;
+      const key = `${sessionId}:${m.content.substring(0, 200)}`;
+      const cached = cache[key];
+      if (cached) {
+        return { ...m, thinking: cached.thinking, toolEvents: cached.toolEvents };
+      }
+      return m;
+    });
+  } catch {
+    return msgs;
+  }
+}
 
 export default function ChatScreen() {
   const r = useResponsive();
@@ -90,7 +130,7 @@ export default function ChatScreen() {
         if (finishedSessionId === activeSessionId) {
           sessionsApi.get(token, finishedSessionId)
             .then(detail => {
-              setMessages(detail.messages);
+              setMessages(hydrateThinkingFromCache(finishedSessionId, detail.messages));
               setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
             })
             .catch(e => console.error("Failed to refresh active session via SSE", e));
@@ -127,7 +167,7 @@ export default function ChatScreen() {
     try {
       setLoadingMessages(true);
       const detail = await sessionsApi.get(token, id);
-      setMessages(detail.messages);
+      setMessages(hydrateThinkingFromCache(id, detail.messages));
       setTimeout(
         () => flatListRef.current?.scrollToEnd({ animated: true }),
         200,
@@ -216,7 +256,6 @@ export default function ChatScreen() {
         throw new Error("Streaming not supported on this platform.");
       }
 
-      // Add streaming placeholder immediately so text events can update it
       setMessages((prev) => [
         ...prev,
         {
@@ -225,39 +264,65 @@ export default function ChatScreen() {
           content: "",
           created_at: new Date().toISOString(),
           isStreaming: true,
+          isThinking: true,
+          thinking: "",
+          toolEvents: [],
         },
       ]);
       setIsTyping(false);
 
       let currentContent = "";
+      let currentThinking = "";
+      let currentTools: ToolEvent[] = [];
 
       for await (const { type, data } of readSSE(res.body)) {
-        if (type === "text") {
-          // Append each token chunk — render as plain Text during streaming
-          // to avoid broken mid-stream markdown
+        if (type === "thinking") {
+          currentThinking += data.content;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiId ? { ...m, thinking: currentThinking } : m,
+            ),
+          );
+        } else if (type === "text") {
           currentContent += data.content;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiId ? { ...m, content: currentContent } : m,
+              m.id === aiId
+                ? { ...m, content: currentContent, isThinking: false }
+                : m,
             ),
           );
         } else if (type === "tool_start") {
-          // Show a tool-use indicator inline
-          currentContent += `\n\n*Using ${data.tool}...*\n\n`;
+          currentTools = [...currentTools, { tool: data.tool, status: "running" }];
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === aiId ? { ...m, content: currentContent } : m,
+              m.id === aiId ? { ...m, toolEvents: currentTools } : m,
             ),
           );
         } else if (type === "tool_end") {
-          // Tool finished; next text event will bring the result
+          currentTools = currentTools.map((t) =>
+            t.tool === data.tool ? { ...t, status: "done" } : t,
+          );
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiId ? { ...m, toolEvents: currentTools } : m,
+            ),
+          );
         } else if (type === "done") {
-          // Replace streamed chunks with the final clean reply
-          // and switch off streaming mode so Markdown is rendered
+          const sid = activeSessionId || data.session_id;
+          if (sid) {
+            saveThinkingToCache(sid, data.reply, currentThinking, currentTools);
+          }
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiId
-                ? { ...m, content: data.reply, isStreaming: false }
+                ? {
+                    ...m,
+                    content: data.reply,
+                    isStreaming: false,
+                    isThinking: false,
+                  }
                 : m,
             ),
           );
@@ -515,6 +580,112 @@ function AnimatedLogo({ colors }: { colors: any }) {
   );
 }
 
+// ── Thinking Section (collapsible) ─────────────────────────────────────────
+function ThinkingSection({
+  thinking,
+  isThinking,
+  toolEvents,
+  isDone,
+  colors,
+}: {
+  thinking: string;
+  isThinking: boolean;
+  toolEvents: ToolEvent[];
+  isDone: boolean;
+  colors: any;
+}) {
+  const [expanded, setExpanded] = useState(!isDone);
+  const ts = getThinkingStyles(colors);
+
+  React.useEffect(() => {
+    if (isDone) setExpanded(false);
+  }, [isDone]);
+
+  if (!thinking && toolEvents.length === 0) return null;
+
+  return (
+    <View style={ts.container}>
+      <TouchableOpacity
+        style={ts.header}
+        activeOpacity={0.7}
+        onPress={() => setExpanded((v) => !v)}
+      >
+        <View style={ts.headerLeft}>
+          {isThinking && Platform.OS === "web" ? (
+            <View>
+              <style
+                dangerouslySetInnerHTML={{
+                  __html: `
+                    @keyframes thinkPulse {
+                      0%, 100% { opacity: 0.5; }
+                      50% { opacity: 1; }
+                    }
+                    .thinking-indicator { animation: thinkPulse 1.4s ease-in-out infinite; }
+                  `,
+                }}
+              />
+              <div className="thinking-indicator">
+                <Ionicons name="bulb" size={14} color={colors.primary} />
+              </div>
+            </View>
+          ) : (
+            <Ionicons
+              name="bulb"
+              size={14}
+              color={isDone ? colors.textSubtle : colors.primary}
+            />
+          )}
+          <Text style={[ts.headerText, isDone && { color: colors.textSubtle }]}>
+            {isThinking ? "Thinking..." : "Thought process"}
+          </Text>
+        </View>
+        <Ionicons
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={14}
+          color={colors.textSubtle}
+        />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={ts.body}>
+          {!!thinking && <Text style={ts.thinkingText}>{thinking}</Text>}
+          {toolEvents.length > 0 && (
+            <View style={ts.toolRow}>
+              {toolEvents.map((te, i) => (
+                <View
+                  key={i}
+                  style={[
+                    ts.toolBadge,
+                    te.status === "done" && ts.toolBadgeDone,
+                  ]}
+                >
+                  {te.status === "running" ? (
+                    <ActivityIndicator size={10} color={colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={12}
+                      color="#22c55e"
+                    />
+                  )}
+                  <Text
+                    style={[
+                      ts.toolBadgeText,
+                      te.status === "done" && ts.toolBadgeTextDone,
+                    ]}
+                  >
+                    {te.tool}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Message Bubble ─────────────────────────────────────────────────────────
 function MessageBubble({
   msg,
@@ -531,13 +702,14 @@ function MessageBubble({
 }) {
   const isUser = msg.role === "user";
   const b = getBubbleStyles(colors);
-  // Render plain Text during streaming to avoid broken mid-stream Markdown,
-  // switch to Markdown only when the final reply has arrived.
   const renderAIContent = msg.isStreaming ? (
     <Text style={b.text}>{msg.content}</Text>
   ) : (
     <Markdown style={getMarkdownStyles(colors) as any}>{msg.content}</Markdown>
   );
+
+  const hasThinking =
+    !isUser && (!!msg.thinking || (msg.toolEvents && msg.toolEvents.length > 0));
 
   let parsedImageUrls: string[] = [];
   if (msg.image_url) {
@@ -567,8 +739,12 @@ function MessageBubble({
   const hasDocs = docUrls.length > 0;
   const hasImages = parsedImageUrls.length > 0;
 
+  const bubbleMaxWidth = isDesktop
+    ? isUser ? "60%" : "85%"
+    : isUser ? "85%" : "90%";
+
   return (
-    <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 24 }]}>
+    <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 16 }]}>
       {!isUser && (
         isTyping ? (
           <AnimatedLogo colors={colors} />
@@ -576,21 +752,23 @@ function MessageBubble({
           <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
         )
       )}
-      <View
-        style={[
-          b.bubble,
-          isUser ? b.userBubble : b.aiBubble,
-          {
-            maxWidth: isDesktop
-              ? isUser
-                ? "60%"
-                : "85%"
-              : isUser
-                ? "85%"
-                : "90%",
-          },
-        ]}
-      >
+      <View style={{ flexShrink: 1, maxWidth: bubbleMaxWidth }}>
+        {hasThinking && (
+          <ThinkingSection
+            thinking={msg.thinking || ""}
+            isThinking={!!msg.isThinking}
+            toolEvents={msg.toolEvents || []}
+            isDone={!msg.isStreaming}
+            colors={colors}
+          />
+        )}
+        <View
+          style={[
+            b.bubble,
+            isUser ? b.userBubble : b.aiBubble,
+            hasThinking && { paddingTop: 0 },
+          ]}
+        >
         {!isTyping && (
           <>
             {hasImages && (
@@ -668,6 +846,7 @@ function MessageBubble({
               ))}
           </>
         )}
+        </View>
       </View>
       {/* User Avatar removed based on preference */}
     </View>
@@ -796,6 +975,77 @@ const getBubbleStyles = (colors: any) =>
     },
     docChipTextUser: {
       color: "#fff",
+    },
+  });
+
+const getThinkingStyles = (colors: any) =>
+  StyleSheet.create({
+    container: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      marginBottom: 6,
+      overflow: "hidden",
+      backgroundColor: colors.surfaceSecondary,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      // @ts-ignore – web only
+      cursor: "pointer",
+    },
+    headerLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    headerText: {
+      fontSize: 13,
+      fontFamily: Fonts.medium,
+      color: colors.text,
+    },
+    body: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      gap: 8,
+    },
+    thinkingText: {
+      fontSize: 13,
+      fontFamily: Fonts.regular,
+      color: colors.textMuted,
+      lineHeight: 20,
+    },
+    toolRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 4,
+    },
+    toolBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: colors.primaryBg,
+      borderWidth: 1,
+      borderColor: colors.primary + "44",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    toolBadgeDone: {
+      backgroundColor: "rgba(34, 197, 94, 0.08)",
+      borderColor: "rgba(34, 197, 94, 0.3)",
+    },
+    toolBadgeText: {
+      fontSize: 11,
+      fontFamily: Fonts.medium,
+      color: colors.primary,
+    },
+    toolBadgeTextDone: {
+      color: "#22c55e",
     },
   });
 

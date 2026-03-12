@@ -46,6 +46,10 @@ export interface Session {
 export interface SessionDetail extends Session {
     messages: ChatMessage[];
 }
+export interface ToolEvent {
+    tool: string;
+    status: 'running' | 'done';
+}
 export interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
@@ -54,6 +58,9 @@ export interface ChatMessage {
     document_urls?: string[];
     created_at: string;
     isStreaming?: boolean;
+    thinking?: string;
+    isThinking?: boolean;
+    toolEvents?: ToolEvent[];
 }
 export interface ChatResponse {
     reply: string;
@@ -129,6 +136,12 @@ export const integrationsApi = {
         apiFetch<{ url?: string }>('/auth/forms/connect', { token }),
     formsDisconnect: (token: string) =>
         apiFetch('/auth/forms/disconnect', { method: 'DELETE', token }),
+    meetStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/meet/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    meetConnect: (token: string) =>
+        apiFetch<{ url?: string }>('/auth/meet/connect', { token }),
+    meetDisconnect: (token: string) =>
+        apiFetch('/auth/meet/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

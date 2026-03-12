@@ -80,6 +80,7 @@ export default function ChatInputArea({
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [slidesConnected, setSlidesConnected] = useState(false);
   const [formsConnected, setFormsConnected] = useState(false);
+  const [meetConnected, setMeetConnected] = useState(false);
   const [isCheckingIntegrations, setIsCheckingIntegrations] = useState(false);
 
   const checkIntegrations = async () => {
@@ -100,6 +101,8 @@ export default function ChatInputArea({
       setSlidesConnected(!!sl);
       const f = await integrationsApi.formsStatus(token);
       setFormsConnected(!!f);
+      const m = await integrationsApi.meetStatus(token);
+      setMeetConnected(!!m);
     } catch (e) {
       console.error("Error checking integrations", e);
     } finally {
@@ -248,6 +251,29 @@ export default function ChatInputArea({
         }
       } catch (e: any) {
         Alert.alert("Error connecting Calendar", e.message);
+      }
+    }
+  };
+
+  const handleMeetAction = async () => {
+    if (!token) return;
+    if (meetConnected) {
+      await integrationsApi.meetDisconnect(token);
+      setMeetConnected(false);
+    } else {
+      try {
+        const res = await integrationsApi.meetConnect(token);
+        const url =
+          res?.url ||
+          (res as any)?.auth_url ||
+          (typeof res === "string" ? res : null);
+        if (url) {
+          Linking.openURL(url);
+        } else {
+          Alert.alert("Error", "Invalid Google OAuth URL returned.");
+        }
+      } catch (e: any) {
+        Alert.alert("Error connecting Meet", e.message);
       }
     }
   };
@@ -725,6 +751,7 @@ export default function ChatInputArea({
         calendarConnected={calendarConnected}
         slidesConnected={slidesConnected}
         formsConnected={formsConnected}
+        meetConnected={meetConnected}
         onGmailAction={handleGmailAction}
         onSheetsAction={handleSheetsAction}
         onDocsAction={handleDocsAction}
@@ -732,6 +759,7 @@ export default function ChatInputArea({
         onCalendarAction={handleCalendarAction}
         onSlidesAction={handleSlidesAction}
         onFormsAction={handleFormsAction}
+        onMeetAction={handleMeetAction}
         loading={isCheckingIntegrations}
         hPad={hPad}
       />
@@ -818,6 +846,7 @@ function IntegrationsMenu({
   calendarConnected,
   slidesConnected,
   formsConnected,
+  meetConnected,
   onGmailAction,
   onSheetsAction,
   onDocsAction,
@@ -825,6 +854,7 @@ function IntegrationsMenu({
   onCalendarAction,
   onSlidesAction,
   onFormsAction,
+  onMeetAction,
   loading,
   hPad,
 }: any) {
@@ -1082,6 +1112,41 @@ function IntegrationsMenu({
               <TouchableOpacity
                 style={[s.btn, s.btnConnect]}
                 onPress={onFormsAction}
+              >
+                <Text style={[s.btnText, s.btnTextConnect]}>Connect</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={s.item}>
+            <View style={s.itemLeft}>
+              <Image
+                source={{
+                  uri: "https://img.icons8.com/color/48/google-meet--v1.png",
+                }}
+                style={{ width: 22, height: 22 }}
+              />
+              <Text style={s.itemText}>Google Meet</Text>
+            </View>
+            {meetConnected ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <View style={s.activeBadge}>
+                  <View style={s.activeDot} />
+                  <Text style={s.activeText}>Active</Text>
+                </View>
+                <TouchableOpacity onPress={onMeetAction} style={s.iconBtn}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={16}
+                    color={colors.textError || "#ff4444"}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[s.btn, s.btnConnect]}
+                onPress={onMeetAction}
               >
                 <Text style={[s.btnText, s.btnTextConnect]}>Connect</Text>
               </TouchableOpacity>
