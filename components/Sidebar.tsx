@@ -16,10 +16,8 @@ import { useTheme } from '../context/ThemeContext';
 import { sessionsApi, Session } from '../services/api';
 
 const NAV_ITEMS = [
-    { icon: 'globe-outline', label: 'Explore' },
-    { icon: 'library-outline', label: 'Library' },
-    { icon: 'folder-outline', label: 'Files' },
-    { icon: 'time-outline', label: 'History' },
+    { icon: 'grid-outline', label: 'Integration' },
+    { icon: 'alarm-outline', label: 'Reminders' },
 ];
 
 interface SidebarProps {

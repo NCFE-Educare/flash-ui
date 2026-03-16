@@ -21,13 +21,19 @@ import { useResponsive } from "../hooks/useResponsive";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
-import EventSource from "react-native-sse";
 import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent } from "../services/api";
+import { useNotifications } from "../context/NotificationContext";
 import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
 import ChatWelcome from "../components/ChatWelcome";
 import ChatInputArea from "../components/ChatInputArea";
+import IntegrationsPage from "../components/IntegrationsPage";
+import RemindersPage from "../components/RemindersPage";
 import Markdown from "react-native-markdown-display";
+
+const CHAT_VIEW = -1;
+const INTEGRATIONS_VIEW = 0;
+const REMINDERS_VIEW = 1;
 
 // ── Thinking Cache (persists across refresh / session switches) ─────────────
 const THINKING_CACHE_KEY = "cortex_thinking_cache";
@@ -75,7 +81,7 @@ export default function ChatScreen() {
   const { colors, isDark } = useTheme();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [selectedNav, setSelectedNav] = useState(0);
+  const [selectedNav, setSelectedNav] = useState(CHAT_VIEW);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ── Backend State ──
@@ -109,48 +115,32 @@ export default function ChatScreen() {
     loadSessions();
   }, [loadSessions]);
 
-  // ── Global SSE Notifications ──
+  // ── SSE response_done (handled by NotificationProvider) ──
+  const { registerResponseDone, refreshPending, navigateToRemindersTrigger } = useNotifications();
   useEffect(() => {
-    if (!token) return;
-
-    // The backend endpoint accepts the token via query param
-    const url = `http://127.0.0.1:8000/chat/notifications?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
-
-    es.addEventListener("response_done" as any, (event: any) => {
-      try {
-        const data = JSON.parse(event.data || "{}");
-        const finishedSessionId = data.session_id;
-
-        // Refresh the session list to show updated preview/title
-        loadSessions();
-
-        // If the session that just finished generating in the background
-        // is the currently active one, refresh its messages so they appear
-        if (finishedSessionId === activeSessionId) {
-          sessionsApi.get(token, finishedSessionId)
-            .then(detail => {
-              setMessages(hydrateThinkingFromCache(finishedSessionId, detail.messages));
-              setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
-            })
-            .catch(e => console.error("Failed to refresh active session via SSE", e));
-        }
-
-      } catch (e) {
-        console.error("Error parsing response_done event", e);
+    return registerResponseDone((finishedSessionId) => {
+      loadSessions();
+      if (finishedSessionId === activeSessionId && token) {
+        sessionsApi.get(token, finishedSessionId)
+          .then((detail) => {
+            setMessages(hydrateThinkingFromCache(finishedSessionId, detail.messages));
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+          })
+          .catch((e) => console.error("Failed to refresh active session via SSE", e));
       }
+      refreshPending();
     });
+  }, [registerResponseDone, loadSessions, activeSessionId, token, refreshPending]);
 
-    es.addEventListener("error", (err) => {
-      console.warn("SSE Error:", err);
-    });
-
-    return () => {
-      es.close();
-    };
-  }, [token, loadSessions, activeSessionId]);
+  // React to "navigate to reminders" trigger (from toast View all or header dropdown)
+  useEffect(() => {
+    if (navigateToRemindersTrigger > 0) {
+      setSelectedNav(REMINDERS_VIEW);
+    }
+  }, [navigateToRemindersTrigger]);
 
   const selectSession = async (id: number | null) => {
+    setSelectedNav(CHAT_VIEW);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -393,75 +383,87 @@ export default function ChatScreen() {
 
           {/* ── Main content ────────────────────────────────────────── */}
           <View style={layout.main}>
-            {/* Top bar */}
+            {/* Top bar (always visible on Chat, Integrations, Reminders) */}
             {r.isDesktop ? (
               <ChatTopBar
                 sidebarCollapsed={sidebarCollapsed}
                 onToggleSidebar={() => setSidebarCollapsed(false)}
+                onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
               />
             ) : (
               <MobileTopBar
                 onOpenDrawer={() => setDrawerOpen(true)}
+                onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
                 colors={colors}
               />
             )}
 
-            {/* Chat body */}
-            {loadingMessages ? (
-              <View
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                <ActivityIndicator size="large" color={colors.primary} />
-              </View>
-            ) : messages.length === 0 ? (
-              <ChatWelcome onSuggestion={sendMessage} />
+            <View style={{ flex: 1 }}>
+            {selectedNav === INTEGRATIONS_VIEW ? (
+              <IntegrationsPage />
+            ) : selectedNav === REMINDERS_VIEW ? (
+              <RemindersPage />
             ) : (
-              <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={(m) => String(m.id)}
-                contentContainerStyle={{
-                  paddingHorizontal: chatPadH,
-                  paddingVertical: 24,
-                  paddingBottom: 40,
-                }}
-                renderItem={({ item }) => (
-                  <MessageBubble
-                    msg={item}
-                    isDesktop={r.isDesktop}
-                    username={user?.username || "U"}
-                    colors={colors}
-                    isTyping={item.isStreaming && !item.content}
+              <>
+                {/* Chat body */}
+                {loadingMessages ? (
+                  <View
+                    style={{
+                      flex: 1,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <ActivityIndicator size="large" color={colors.primary} />
+                  </View>
+                ) : messages.length === 0 ? (
+                  <ChatWelcome onSuggestion={sendMessage} />
+                ) : (
+                  <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    keyExtractor={(m) => String(m.id)}
+                    contentContainerStyle={{
+                      paddingHorizontal: chatPadH,
+                      paddingVertical: 24,
+                      paddingBottom: 40,
+                    }}
+                    renderItem={({ item }) => (
+                      <MessageBubble
+                        msg={item}
+                        isDesktop={r.isDesktop}
+                        username={user?.username || "U"}
+                        colors={colors}
+                        isTyping={item.isStreaming && !item.content}
+                      />
+                    )}
+                    ListFooterComponent={
+                      isTyping && messages.length === 0 ? (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            gap: 12,
+                            alignItems: "flex-start",
+                            marginBottom: 24,
+                            paddingHorizontal: chatPadH,
+                          }}
+                        >
+                          <AnimatedLogo colors={colors} />
+                        </View>
+                      ) : null
+                    }
                   />
                 )}
-                ListFooterComponent={
-                  isTyping && messages.length === 0 ? (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        gap: 12,
-                        alignItems: "flex-start",
-                        marginBottom: 24,
-                        paddingHorizontal: chatPadH,
-                      }}
-                    >
-                      <AnimatedLogo colors={colors} />
-                    </View>
-                  ) : null
-                }
-              />
-            )}
 
-            {/* Input */}
-            <ChatInputArea
-              onSend={(t, imgs, docs) => sendMessage(t, imgs, docs)}
-              isGenerating={isGenerating}
-              onStop={stopGeneration}
-            />
+                {/* Input */}
+                <ChatInputArea
+                  onSend={(t, imgs, docs) => sendMessage(t, imgs, docs)}
+                  isGenerating={isGenerating}
+                  onStop={stopGeneration}
+                />
+              </>
+            )}
+            </View>
           </View>
 
           {/* ── Mobile/tablet drawer overlay ────────────────────────── */}
@@ -500,12 +502,15 @@ export default function ChatScreen() {
 // ── Mobile / Tablet top bar ────────────────────────────────────────────────
 function MobileTopBar({
   onOpenDrawer,
+  onViewReminders,
   colors,
 }: {
   onOpenDrawer(): void;
+  onViewReminders?(): void;
   colors: any;
 }) {
   const styles = getLayoutStyles(colors);
+  const { notificationCount } = useNotifications();
   return (
     <View style={styles.mobileTopBar}>
       <TouchableOpacity onPress={onOpenDrawer} style={{ padding: 6 }}>
@@ -515,9 +520,34 @@ function MobileTopBar({
         <Image source={require('../assets/logo.png')} style={{ width: 20, height: 20 }} resizeMode="contain" />
         <Text style={styles.mobileLogoText}>Cortex</Text>
       </View>
-      <TouchableOpacity style={styles.mobileUpgradeBtn}>
-        <Text style={styles.mobileUpgradeText}>Upgrade</Text>
-      </TouchableOpacity>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        <TouchableOpacity onPress={onViewReminders} style={{ padding: 6, position: "relative" }}>
+          <Ionicons name="notifications-outline" size={20} color={colors.text} />
+          {notificationCount > 0 && (
+            <View
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                minWidth: 14,
+                height: 14,
+                borderRadius: 7,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 3,
+              }}
+            >
+              <Text style={{ fontSize: 9, fontFamily: Fonts.semibold, color: colors.textInverse }}>
+                {notificationCount > 9 ? "9+" : notificationCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.mobileUpgradeBtn}>
+          <Text style={styles.mobileUpgradeText}>Upgrade</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

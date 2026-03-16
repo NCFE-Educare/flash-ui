@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { NotificationProvider } from '../context/NotificationContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -76,7 +77,9 @@ export default function RootLayout() {
     return (
         <ThemeProvider>
             <AuthProvider>
-                <ThemedApp />
+                <NotificationProvider>
+                    <ThemedApp />
+                </NotificationProvider>
             </AuthProvider>
         </ThemeProvider>
     );

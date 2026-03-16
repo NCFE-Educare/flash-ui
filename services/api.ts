@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const BASE_URL = 'http://127.0.0.1:8000';
+export const BASE_URL = 'http://127.0.0.1:8000';
 
 // ── Generic fetch wrapper ─────────────────────────────────────────────────────
 export async function apiFetch<T = any>(
@@ -74,6 +74,14 @@ export interface DocumentUploadResponse {
     document_urls: string[];
 }
 
+export interface Reminder {
+    id: number;
+    message: string;
+    remind_at: string;
+    delivered?: boolean;
+    created_at?: string;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
     signup: (email: string, username: string, password: string) =>
@@ -142,6 +150,12 @@ export const integrationsApi = {
         apiFetch<{ url?: string }>('/auth/meet/connect', { token }),
     meetDisconnect: (token: string) =>
         apiFetch('/auth/meet/disconnect', { method: 'DELETE', token }),
+    classroomStatus: (token: string) =>
+        apiFetch<{ connected: boolean }>('/auth/classroom/status', { token }).then((data) => data?.connected === true).catch(() => false),
+    classroomConnect: (token: string) =>
+        apiFetch<{ auth_url?: string; url?: string }>('/auth/classroom/connect', { token }),
+    classroomDisconnect: (token: string) =>
+        apiFetch('/auth/classroom/disconnect', { method: 'DELETE', token }),
 };
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -233,6 +247,18 @@ export const documentApi = {
         }
         return res.json();
     },
+};
+
+// ── Reminders ──────────────────────────────────────────────────────────────────
+export const remindersApi = {
+    pending: (token: string) =>
+        apiFetch<{ reminders: Reminder[] }>('/reminders/pending', { token }),
+
+    list: (token: string, includeDelivered = false) =>
+        apiFetch<Reminder[]>(`/reminders?include_delivered=${includeDelivered}`, { token }),
+
+    delete: (token: string, id: number) =>
+        apiFetch(`/reminders/${id}`, { method: 'DELETE', token }),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
