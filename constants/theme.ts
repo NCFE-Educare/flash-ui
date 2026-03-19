@@ -76,4 +76,10 @@ export const Fonts = {
     medium: 'Inter_500Medium',
     semibold: 'Inter_600SemiBold',
     bold: 'Inter_700Bold',
+
+    // IBM Plex Serif (Perplexity look)
+    serif: 'IBMPlexSerif_400Regular',
+    serifMedium: 'IBMPlexSerif_500Medium',
+    serifSemibold: 'IBMPlexSerif_600SemiBold',
+    serifBold: 'IBMPlexSerif_700Bold',
 };

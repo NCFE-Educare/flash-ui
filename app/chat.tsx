@@ -29,11 +29,14 @@ import ChatWelcome from "../components/ChatWelcome";
 import ChatInputArea from "../components/ChatInputArea";
 import IntegrationsPage from "../components/IntegrationsPage";
 import RemindersPage from "../components/RemindersPage";
+import MemoriesPage from "../components/MemoriesPage";
+import { TextGenerateEffect } from "../components/TextGenerateEffect";
 import Markdown from "react-native-markdown-display";
 
 const CHAT_VIEW = -1;
 const INTEGRATIONS_VIEW = 0;
 const REMINDERS_VIEW = 1;
+const MEMORIES_VIEW = 2;
 
 // ── Thinking Cache (persists across refresh / session switches) ─────────────
 const THINKING_CACHE_KEY = "cortex_thinking_cache";
@@ -88,12 +91,14 @@ export default function ChatScreen() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [streamingMessage, setStreamingMessage] = useState<ChatMessage | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -148,6 +153,11 @@ export default function ChatScreen() {
       setIsTyping(false);
     }
 
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+    setStreamingMessage(null);
     setActiveSessionId(id);
     if (!id || !token) {
       setMessages([]);
@@ -175,29 +185,31 @@ export default function ChatScreen() {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let eventType = "";
+    let dataStr = "";
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      // Keep the last (possibly incomplete) line in the buffer
-      buffer = lines.pop() || "";
-      let eventType = "";
-      let dataStr = "";
-      for (const line of lines) {
-        if (line.startsWith("event: ")) {
-          eventType = line.slice(7);
-        } else if (line.startsWith("data: ")) {
-          dataStr = line.slice(6);
-        } else if (line === "" && dataStr) {
-          // Blank line = end of one SSE event
-          try {
-            yield { type: eventType, data: JSON.parse(dataStr) };
-          } catch (e) {
-            console.error("Failed to parse SSE data:", dataStr, e);
+      // Keep the last (potentially incomplete) line in the buffer for the next chunk.
+      buffer = lines[lines.length - 1];
+      for (let i = 0; i < lines.length - 1; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith("event: ")) {
+          eventType = trimmed.slice(7);
+        } else if (trimmed.startsWith("data: ")) {
+          const data = trimmed.slice(6);
+          if (data) {
+            try {
+              yield { type: eventType || "text", data: JSON.parse(data) };
+            } catch (e) {
+              // Ignore parse errors
+            }
           }
+        } else if (trimmed === "") {
           eventType = "";
-          dataStr = "";
         }
       }
     }
@@ -246,19 +258,17 @@ export default function ChatScreen() {
         throw new Error("Streaming not supported on this platform.");
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: aiId,
-          role: "assistant",
-          content: "",
-          created_at: new Date().toISOString(),
-          isStreaming: true,
-          isThinking: true,
-          thinking: "",
-          toolEvents: [],
-        },
-      ]);
+      const aiMsgBase: ChatMessage = {
+        id: aiId,
+        role: "assistant",
+        content: "",
+        created_at: new Date().toISOString(),
+        isStreaming: true,
+        isThinking: true,
+        thinking: "",
+        toolEvents: [],
+      };
+      setStreamingMessage(aiMsgBase);
       setIsTyping(false);
 
       let currentContent = "";
@@ -268,59 +278,69 @@ export default function ChatScreen() {
       for await (const { type, data } of readSSE(res.body)) {
         if (type === "thinking") {
           currentThinking += data.content;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId ? { ...m, thinking: currentThinking } : m,
-            ),
-          );
+          setStreamingMessage({ ...aiMsgBase, thinking: currentThinking });
         } else if (type === "text") {
           currentContent += data.content;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId
-                ? { ...m, content: currentContent, isThinking: false }
-                : m,
-            ),
-          );
+          setStreamingMessage({
+            ...aiMsgBase,
+            content: currentContent,
+            thinking: currentThinking,
+            isThinking: false,
+          });
         } else if (type === "tool_start") {
           currentTools = [...currentTools, { tool: data.tool, status: "running" }];
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId ? { ...m, toolEvents: currentTools } : m,
-            ),
-          );
+          setStreamingMessage({
+            ...aiMsgBase,
+            content: currentContent,
+            thinking: currentThinking,
+            toolEvents: currentTools,
+          });
         } else if (type === "tool_end") {
           currentTools = currentTools.map((t) =>
             t.tool === data.tool ? { ...t, status: "done" } : t,
           );
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId ? { ...m, toolEvents: currentTools } : m,
-            ),
-          );
+          setStreamingMessage({
+            ...aiMsgBase,
+            content: currentContent,
+            thinking: currentThinking,
+            toolEvents: currentTools,
+          });
         } else if (type === "done") {
           const sid = activeSessionId || data.session_id;
           if (sid) {
             saveThinkingToCache(sid, data.reply, currentThinking, currentTools);
           }
 
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiId
-                ? {
-                    ...m,
-                    content: data.reply,
-                    isStreaming: false,
-                    isThinking: false,
-                  }
-                : m,
-            ),
-          );
+          const finalMsg: ChatMessage = {
+            ...aiMsgBase,
+            content: data.reply,
+            thinking: currentThinking,
+            toolEvents: currentTools,
+            isStreaming: false,
+            isThinking: false,
+          };
+
+          // Keep the streaming bubble alive with the full reply so useAnimatedText
+          // can finish animating the remaining characters before we swap to Markdown.
+          const animatingMsg: ChatMessage = { ...finalMsg, isStreaming: true };
+          setStreamingMessage(animatingMsg);
+
+          // Estimate how long the remaining animation needs (~20ms/char, capped at 2s).
+          const remainingChars = Math.max(0, data.reply.length - currentContent.length);
+          const animDelay = Math.min(2200, remainingChars * 20 + 300);
+
+          if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+          animationTimeoutRef.current = setTimeout(() => {
+            setMessages((prev) => [...prev, finalMsg]);
+            setStreamingMessage(null);
+            animationTimeoutRef.current = null;
+          }, animDelay);
 
           if (!activeSessionId) {
             setActiveSessionId(data.session_id);
             await loadSessions();
           }
+          break;
         }
       }
       setTimeout(
@@ -347,6 +367,11 @@ export default function ChatScreen() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+    setStreamingMessage(null);
     setIsGenerating(false);
     setIsTyping(false);
   };
@@ -403,6 +428,8 @@ export default function ChatScreen() {
               <IntegrationsPage />
             ) : selectedNav === REMINDERS_VIEW ? (
               <RemindersPage />
+            ) : selectedNav === MEMORIES_VIEW ? (
+              <MemoriesPage />
             ) : (
               <>
                 {/* Chat body */}
@@ -421,7 +448,7 @@ export default function ChatScreen() {
                 ) : (
                   <FlatList
                     ref={flatListRef}
-                    data={messages}
+                    data={streamingMessage ? [...messages, streamingMessage] : messages}
                     keyExtractor={(m) => String(m.id)}
                     contentContainerStyle={{
                       paddingHorizontal: chatPadH,
@@ -448,7 +475,11 @@ export default function ChatScreen() {
                             paddingHorizontal: chatPadH,
                           }}
                         >
-                          <AnimatedLogo colors={colors} />
+                          <Image
+                            source={require("../assets/logo.png")}
+                            style={{ width: 24, height: 24 }}
+                            resizeMode="contain"
+                          />
                         </View>
                       ) : null
                     }
@@ -611,110 +642,7 @@ function AnimatedLogo({ colors }: { colors: any }) {
 }
 
 // ── Thinking Section (collapsible) ─────────────────────────────────────────
-function ThinkingSection({
-  thinking,
-  isThinking,
-  toolEvents,
-  isDone,
-  colors,
-}: {
-  thinking: string;
-  isThinking: boolean;
-  toolEvents: ToolEvent[];
-  isDone: boolean;
-  colors: any;
-}) {
-  const [expanded, setExpanded] = useState(!isDone);
-  const ts = getThinkingStyles(colors);
 
-  React.useEffect(() => {
-    if (isDone) setExpanded(false);
-  }, [isDone]);
-
-  if (!thinking && toolEvents.length === 0) return null;
-
-  return (
-    <View style={ts.container}>
-      <TouchableOpacity
-        style={ts.header}
-        activeOpacity={0.7}
-        onPress={() => setExpanded((v) => !v)}
-      >
-        <View style={ts.headerLeft}>
-          {isThinking && Platform.OS === "web" ? (
-            <View>
-              <style
-                dangerouslySetInnerHTML={{
-                  __html: `
-                    @keyframes thinkPulse {
-                      0%, 100% { opacity: 0.5; }
-                      50% { opacity: 1; }
-                    }
-                    .thinking-indicator { animation: thinkPulse 1.4s ease-in-out infinite; }
-                  `,
-                }}
-              />
-              <div className="thinking-indicator">
-                <Ionicons name="bulb" size={14} color={colors.primary} />
-              </div>
-            </View>
-          ) : (
-            <Ionicons
-              name="bulb"
-              size={14}
-              color={isDone ? colors.textSubtle : colors.primary}
-            />
-          )}
-          <Text style={[ts.headerText, isDone && { color: colors.textSubtle }]}>
-            {isThinking ? "Thinking..." : "Thought process"}
-          </Text>
-        </View>
-        <Ionicons
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={14}
-          color={colors.textSubtle}
-        />
-      </TouchableOpacity>
-
-      {expanded && (
-        <View style={ts.body}>
-          {!!thinking && <Text style={ts.thinkingText}>{thinking}</Text>}
-          {toolEvents.length > 0 && (
-            <View style={ts.toolRow}>
-              {toolEvents.map((te, i) => (
-                <View
-                  key={i}
-                  style={[
-                    ts.toolBadge,
-                    te.status === "done" && ts.toolBadgeDone,
-                  ]}
-                >
-                  {te.status === "running" ? (
-                    <ActivityIndicator size={10} color={colors.primary} />
-                  ) : (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={12}
-                      color="#22c55e"
-                    />
-                  )}
-                  <Text
-                    style={[
-                      ts.toolBadgeText,
-                      te.status === "done" && ts.toolBadgeTextDone,
-                    ]}
-                  >
-                    {te.tool}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
 
 // ── Message Bubble ─────────────────────────────────────────────────────────
 function MessageBubble({
@@ -733,13 +661,13 @@ function MessageBubble({
   const isUser = msg.role === "user";
   const b = getBubbleStyles(colors);
   const renderAIContent = msg.isStreaming ? (
-    <Text style={b.text}>{msg.content}</Text>
+    <TextGenerateEffect
+      words={msg.content}
+      style={[b.text, { fontFamily: Fonts.serif }]}
+    />
   ) : (
     <Markdown style={getMarkdownStyles(colors) as any}>{msg.content}</Markdown>
   );
-
-  const hasThinking =
-    !isUser && (!!msg.thinking || (msg.toolEvents && msg.toolEvents.length > 0));
 
   let parsedImageUrls: string[] = [];
   if (msg.image_url) {
@@ -776,106 +704,100 @@ function MessageBubble({
   return (
     <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 16 }]}>
       {!isUser && (
-        isTyping ? (
-          <AnimatedLogo colors={colors} />
-        ) : (
-          <Image source={require('../assets/logo.png')} style={{ width: 24, height: 24 }} resizeMode="contain" />
-        )
+        <Image
+          source={require("../assets/logo.png")}
+          style={{ width: 24, height: 24 }}
+          resizeMode="contain"
+        />
       )}
       <View style={{ flexShrink: 1, maxWidth: bubbleMaxWidth }}>
-        {hasThinking && (
-          <ThinkingSection
-            thinking={msg.thinking || ""}
-            isThinking={!!msg.isThinking}
-            toolEvents={msg.toolEvents || []}
-            isDone={!msg.isStreaming}
-            colors={colors}
+        {msg.role === "assistant" && msg.isThinking && !msg.content && (
+          <TextGenerateEffect
+            words="Thinking..."
+            style={[b.text, { fontStyle: "italic", opacity: 0.7 }]}
+            filter={false}
+            duration={0.3}
           />
         )}
         <View
           style={[
             b.bubble,
             isUser ? b.userBubble : b.aiBubble,
-            hasThinking && { paddingTop: 0 },
           ]}
         >
-        {!isTyping && (
-          <>
-            {hasImages && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  marginBottom: msg.content || hasDocs ? 8 : 0,
-                }}
-              >
-                {parsedImageUrls.map((url, i) => (
-                  <Image
-                    key={i}
-                    source={{
-                      uri:
-                        url.startsWith("http") ||
-                          url.startsWith("blob:") ||
-                          url.startsWith("file:") ||
-                          url.startsWith("data:")
-                          ? url
-                          : `http://127.0.0.1:8000${url}`,
-                    }}
-                    style={{ width: 200, height: 200, borderRadius: 8 }}
-                    resizeMode="cover"
-                  />
-                ))}
-              </View>
-            )}
-            {hasDocs && (
-              <View style={{ gap: 6, marginBottom: msg.content ? 8 : 0 }}>
-                {docUrls.map((url, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={[b.docChip, isUser && b.docChipUser]}
-                    activeOpacity={0.75}
-                    onPress={() => {
-                      const fullUrl = url.startsWith("http")
+          {hasImages && (
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 8,
+                marginBottom: msg.content || hasDocs ? 8 : 0,
+              }}
+            >
+              {parsedImageUrls.map((url, i) => (
+                <Image
+                  key={i}
+                  source={{
+                    uri:
+                      url.startsWith("http") ||
+                        url.startsWith("blob:") ||
+                        url.startsWith("file:") ||
+                        url.startsWith("data:")
                         ? url
-                        : `http://127.0.0.1:8000${url}`;
-                      if (Platform.OS === "web") {
-                        (window as any).open(fullUrl, "_blank");
-                      } else {
-                        Linking.openURL(fullUrl);
-                      }
-                    }}
-                  >
-                    <Ionicons
-                      name={getDocIconName(url)}
-                      size={16}
-                      color={isUser ? "rgba(255,255,255,0.9)" : colors.primary}
-                    />
-                    <Text
-                      style={[b.docChipText, isUser && b.docChipTextUser]}
-                      numberOfLines={1}
-                    >
-                      {getDocLabel(url)}
-                    </Text>
-                    <Ionicons
-                      name="open-outline"
-                      size={12}
-                      color={
-                        isUser ? "rgba(255,255,255,0.6)" : colors.textSubtle
-                      }
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            {!!msg.content &&
-              (isUser ? (
-                <Text style={[b.text, b.userText]}>{msg.content}</Text>
-              ) : (
-                renderAIContent
+                        : `http://127.0.0.1:8000${url}`,
+                  }}
+                  style={{ width: 200, height: 200, borderRadius: 8 }}
+                  resizeMode="cover"
+                />
               ))}
-          </>
-        )}
+            </View>
+          )}
+          {hasDocs && (
+            <View style={{ gap: 6, marginBottom: msg.content ? 8 : 0 }}>
+              {docUrls.map((url, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[b.docChip, isUser && b.docChipUser]}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    const fullUrl = url.startsWith("http")
+                      ? url
+                      : `http://127.0.0.1:8000${url}`;
+                    if (Platform.OS === "web") {
+                      (window as any).open(fullUrl, "_blank");
+                    } else {
+                      Linking.openURL(fullUrl);
+                    }
+                  }}
+                >
+                  <Ionicons
+                    name={getDocIconName(url)}
+                    size={16}
+                    color={isUser ? "rgba(255,255,255,0.9)" : colors.primary}
+                  />
+                  <Text
+                    style={[b.docChipText, isUser && b.docChipTextUser]}
+                    numberOfLines={1}
+                  >
+                    {getDocLabel(url)}
+                  </Text>
+                  <Ionicons
+                    name="open-outline"
+                    size={12}
+                    color={
+                      isUser ? "rgba(255,255,255,0.6)" : colors.textSubtle
+                    }
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {!!msg.content &&
+            (isUser ? (
+              <Text style={[b.text, b.userText]}>{msg.content}</Text>
+            ) : (
+              renderAIContent
+            ))}
         </View>
       </View>
       {/* User Avatar removed based on preference */}
@@ -1008,82 +930,13 @@ const getBubbleStyles = (colors: any) =>
     },
   });
 
-const getThinkingStyles = (colors: any) =>
-  StyleSheet.create({
-    container: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      marginBottom: 6,
-      overflow: "hidden",
-      backgroundColor: colors.surfaceSecondary,
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      // @ts-ignore – web only
-      cursor: "pointer",
-    },
-    headerLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    headerText: {
-      fontSize: 13,
-      fontFamily: Fonts.medium,
-      color: colors.text,
-    },
-    body: {
-      paddingHorizontal: 12,
-      paddingBottom: 12,
-      gap: 8,
-    },
-    thinkingText: {
-      fontSize: 13,
-      fontFamily: Fonts.regular,
-      color: colors.textMuted,
-      lineHeight: 20,
-    },
-    toolRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-      marginTop: 4,
-    },
-    toolBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      backgroundColor: colors.primaryBg,
-      borderWidth: 1,
-      borderColor: colors.primary + "44",
-      borderRadius: 6,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    toolBadgeDone: {
-      backgroundColor: "rgba(34, 197, 94, 0.08)",
-      borderColor: "rgba(34, 197, 94, 0.3)",
-    },
-    toolBadgeText: {
-      fontSize: 11,
-      fontFamily: Fonts.medium,
-      color: colors.primary,
-    },
-    toolBadgeTextDone: {
-      color: "#22c55e",
-    },
-  });
+
 
 const getMarkdownStyles = (colors: any) =>
   StyleSheet.create({
     body: {
       fontSize: 15,
-      fontFamily: Fonts.regular,
+      fontFamily: Fonts.serif,
       color: colors.text,
       lineHeight: 24,
     },
@@ -1130,7 +983,7 @@ const getMarkdownStyles = (colors: any) =>
     link: { color: colors.primary, textDecorationLine: "underline" },
     paragraph: { marginBottom: 8, marginTop: 0 },
     list_item: { marginBottom: 4 },
-    strong: { fontFamily: Fonts.bold },
+    strong: { fontFamily: Fonts.serifBold },
     em: { fontStyle: "italic" },
     blockquote: {
       borderLeftWidth: 4,

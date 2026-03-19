@@ -18,6 +18,7 @@ import { sessionsApi, Session } from '../services/api';
 const NAV_ITEMS = [
     { icon: 'grid-outline', label: 'Integration' },
     { icon: 'alarm-outline', label: 'Reminders' },
+    { icon: 'bulb-outline', label: 'Memories' },
 ];
 
 interface SidebarProps {
@@ -195,7 +196,7 @@ const getStyles = (colors: any) => StyleSheet.create({
     newChatBtnCompact: { marginHorizontal: 10 },
     newChatText: { fontSize: 13, fontFamily: Fonts.medium, color: colors.textInverse },
     searchBox: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginBottom: 6, paddingHorizontal: 10, height: 34, borderRadius: 8, backgroundColor: colors.inputBg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
-    searchInput: { flex: 1, fontSize: 13, fontFamily: Fonts.regular, color: colors.text, marginLeft: 6, outlineWidth: 0 },
+    searchInput: { flex: 1, fontSize: 13, fontFamily: Fonts.regular, color: colors.text, marginLeft: 6, ...({ outlineWidth: 0 } as any) },
     navItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 8, marginVertical: 1, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
     navItemActive: { backgroundColor: colors.surfaceHover },
     navItemCompact: { justifyContent: 'center', gap: 0, marginHorizontal: 6 },

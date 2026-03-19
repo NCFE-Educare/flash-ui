@@ -82,6 +82,14 @@ export interface Reminder {
     created_at?: string;
 }
 
+export interface Memory {
+    id: string;
+    memory: string;
+    categories?: string[];
+    created_at: string;
+    updated_at: string;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
     signup: (email: string, username: string, password: string) =>
@@ -259,6 +267,29 @@ export const remindersApi = {
 
     delete: (token: string, id: number) =>
         apiFetch(`/reminders/${id}`, { method: 'DELETE', token }),
+};
+
+// ── Memories ──────────────────────────────────────────────────────────────────
+export const memoryApi = {
+    list: (token: string) =>
+        apiFetch<Memory[]>('/memory', { token }),
+
+    update: (token: string, id: string, fact: string) =>
+        apiFetch<Memory>(`/memory/${id}`, {
+            method: 'PUT',
+            token,
+            body: JSON.stringify({ fact }),
+        }),
+
+    delete: (token: string, id: string) =>
+        apiFetch(`/memory/${id}`, { method: 'DELETE', token }),
+
+    search: (token: string, query: string) =>
+        apiFetch<Memory[]>('/memory/search', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ query }),
+        }),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
