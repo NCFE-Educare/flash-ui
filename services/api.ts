@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-export const BASE_URL = 'http://127.0.0.1:8000';
+export const BASE_URL = 'https://d1pkyatvuho4lh.cloudfront.net';
 
 // ── Generic fetch wrapper ─────────────────────────────────────────────────────
 export async function apiFetch<T = any>(

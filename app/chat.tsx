@@ -21,7 +21,7 @@ import { useResponsive } from "../hooks/useResponsive";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
-import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent } from "../services/api";
+import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent, BASE_URL } from "../services/api";
 import { useNotifications } from "../context/NotificationContext";
 import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
@@ -744,7 +744,7 @@ function MessageBubble({
                         url.startsWith("file:") ||
                         url.startsWith("data:")
                         ? url
-                        : `http://127.0.0.1:8000${url}`,
+                        : `${BASE_URL}${url}`,
                   }}
                   style={{ width: 200, height: 200, borderRadius: 8 }}
                   resizeMode="cover"
@@ -762,7 +762,7 @@ function MessageBubble({
                   onPress={() => {
                     const fullUrl = url.startsWith("http")
                       ? url
-                      : `http://127.0.0.1:8000${url}`;
+                      : `${BASE_URL}${url}`;
                     if (Platform.OS === "web") {
                       (window as any).open(fullUrl, "_blank");
                     } else {
