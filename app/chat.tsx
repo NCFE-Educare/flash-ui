@@ -21,7 +21,7 @@ import { useResponsive } from "../hooks/useResponsive";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
-import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent } from "../services/api";
+import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent, ReasoningStep } from "../services/api";
 import { useNotifications } from "../context/NotificationContext";
 import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
@@ -32,6 +32,14 @@ import RemindersPage from "../components/RemindersPage";
 import MemoriesPage from "../components/MemoriesPage";
 import { TextGenerateEffect } from "../components/TextGenerateEffect";
 import Markdown from "react-native-markdown-display";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtStep,
+  ChainOfThoughtSearchResults,
+  ChainOfThoughtSearchResult,
+  ChainOfThoughtImage
+} from "../components/ChainOfThought";
 
 const CHAT_VIEW = -1;
 const INTEGRATIONS_VIEW = 0;
@@ -99,6 +107,7 @@ export default function ChatScreen() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStreamedSessionUpdate = useRef<number | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -126,6 +135,17 @@ export default function ChatScreen() {
     return registerResponseDone((finishedSessionId) => {
       loadSessions();
       if (finishedSessionId === activeSessionId && token) {
+        // Skip reload if we just did it or are doing it via local stream
+        if (lastStreamedSessionUpdate.current === finishedSessionId) {
+          console.log("Skipping redundant active session reload (just streamed)");
+          // Clear it after a short delay because multiple response_done can arrive
+          setTimeout(() => {
+             if (lastStreamedSessionUpdate.current === finishedSessionId) {
+               lastStreamedSessionUpdate.current = null;
+             }
+          }, 3000);
+          return;
+        }
         sessionsApi.get(token, finishedSessionId)
           .then((detail) => {
             setMessages(hydrateThinkingFromCache(finishedSessionId, detail.messages));
@@ -254,6 +274,10 @@ export default function ChatScreen() {
         documentUrls,
         controller.signal,
       );
+
+      // Mark this session as being updated by our stream
+      lastStreamedSessionUpdate.current = activeSessionId;
+
       if (!res.body) {
         throw new Error("Streaming not supported on this platform.");
       }
@@ -274,73 +298,130 @@ export default function ChatScreen() {
       let currentContent = "";
       let currentThinking = "";
       let currentTools: ToolEvent[] = [];
+      let currentReasoningSteps: ReasoningStep[] = [];
 
       for await (const { type, data } of readSSE(res.body)) {
-        if (type === "thinking") {
-          currentThinking += data.content;
-          setStreamingMessage({ ...aiMsgBase, thinking: currentThinking });
-        } else if (type === "text") {
-          currentContent += data.content;
-          setStreamingMessage({
-            ...aiMsgBase,
-            content: currentContent,
-            thinking: currentThinking,
-            isThinking: false,
-          });
-        } else if (type === "tool_start") {
-          currentTools = [...currentTools, { tool: data.tool, status: "running" }];
-          setStreamingMessage({
-            ...aiMsgBase,
-            content: currentContent,
-            thinking: currentThinking,
-            toolEvents: currentTools,
-          });
-        } else if (type === "tool_end") {
-          currentTools = currentTools.map((t) =>
-            t.tool === data.tool ? { ...t, status: "done" } : t,
-          );
-          setStreamingMessage({
-            ...aiMsgBase,
-            content: currentContent,
-            thinking: currentThinking,
-            toolEvents: currentTools,
-          });
-        } else if (type === "done") {
-          const sid = activeSessionId || data.session_id;
-          if (sid) {
-            saveThinkingToCache(sid, data.reply, currentThinking, currentTools);
-          }
+        switch (type) {
+          case "thinking_start":
+            currentThinking = "";
+            currentReasoningSteps.push({ type: 'thinking', content: '', status: 'active' });
+            setStreamingMessage({ ...aiMsgBase, thinking: "", isThinking: true, reasoning_steps: currentReasoningSteps });
+            break;
+          case "thinking":
+            currentThinking += data.content;
+            // Update or add the latest thinking step
+            if (currentReasoningSteps.length > 0 && currentReasoningSteps[currentReasoningSteps.length - 1].type === 'thinking') {
+              (currentReasoningSteps[currentReasoningSteps.length - 1] as any).content = currentThinking;
+            } else {
+              currentReasoningSteps.push({ type: 'thinking', content: currentThinking, status: 'active' });
+            }
+            setStreamingMessage({ ...aiMsgBase, thinking: currentThinking, isThinking: true, reasoning_steps: currentReasoningSteps });
+            break;
+          case "text":
+            currentContent += data.content;
+            // Mark last thinking step as complete if any
+            if (currentReasoningSteps.length > 0 && currentReasoningSteps[currentReasoningSteps.length - 1].type === 'thinking') {
+              currentReasoningSteps[currentReasoningSteps.length - 1].status = 'complete';
+            }
+            setStreamingMessage({
+              ...aiMsgBase,
+              content: currentContent,
+              thinking: currentThinking,
+              isThinking: false,
+              reasoning_steps: currentReasoningSteps
+            });
+            break;
+          case "tool_start":
+            // Mark last thinking step as complete if any
+            if (currentReasoningSteps.length > 0 && currentReasoningSteps[currentReasoningSteps.length - 1].type === 'thinking') {
+              currentReasoningSteps[currentReasoningSteps.length - 1].status = 'complete';
+            }
+            currentTools = [...currentTools, { tool: data.tool, status: "running" }];
+            currentReasoningSteps.push({ type: 'tool', tool: data.tool, status: 'running', input: data.input });
+            setStreamingMessage({
+              ...aiMsgBase,
+              content: currentContent,
+              thinking: currentThinking,
+              toolEvents: currentTools,
+              reasoning_steps: currentReasoningSteps
+            });
+            break;
+          case "tool_input":
+            currentTools = currentTools.map((t) =>
+              t.tool === data.tool ? { ...t, input: data.input } : t
+            );
+            currentReasoningSteps = currentReasoningSteps.map((s) => 
+               s.type === 'tool' && s.tool === data.tool ? { ...s, input: data.input } : s
+            );
+            setStreamingMessage({
+              ...aiMsgBase,
+              content: currentContent,
+              thinking: currentThinking,
+              toolEvents: currentTools,
+              reasoning_steps: currentReasoningSteps
+            });
+            break;
+          case "tool_end":
+            currentTools = currentTools.map((t) =>
+              t.tool === data.tool ? { ...t, status: "done" } : t,
+            );
+            currentReasoningSteps = currentReasoningSteps.map((s) => 
+              s.type === 'tool' && s.tool === data.tool ? { ...s, status: 'done' } : s
+            );
+            setStreamingMessage({
+              ...aiMsgBase,
+              content: currentContent,
+              thinking: currentThinking,
+              toolEvents: currentTools,
+              reasoning_steps: currentReasoningSteps
+            });
+            break;
+          case "done":
+            const sid = activeSessionId || data.session_id;
+            lastStreamedSessionUpdate.current = sid;
+            if (sid) {
+              saveThinkingToCache(sid, data.reply, currentThinking, currentTools);
+            }
 
-          const finalMsg: ChatMessage = {
-            ...aiMsgBase,
-            content: data.reply,
-            thinking: currentThinking,
-            toolEvents: currentTools,
-            isStreaming: false,
-            isThinking: false,
-          };
+            let dedupedThinking = currentThinking;
+            if (data.reply && currentThinking && data.reply.startsWith(currentThinking.substring(0, 100))) {
+              dedupedThinking = "";
+            }
 
-          // Keep the streaming bubble alive with the full reply so useAnimatedText
-          // can finish animating the remaining characters before we swap to Markdown.
-          const animatingMsg: ChatMessage = { ...finalMsg, isStreaming: true };
-          setStreamingMessage(animatingMsg);
+            const finalMsg: ChatMessage = {
+              ...aiMsgBase,
+              content: data.reply,
+              thinking: dedupedThinking || currentThinking,
+              toolEvents: currentTools,
+              reasoning_steps: currentReasoningSteps.map(s => {
+                if (s.type === 'thinking') {
+                  return { ...s, status: 'complete' as const };
+                } else {
+                  return { ...s, status: 'done' as const };
+                }
+              }),
+              isStreaming: false,
+              isThinking: false,
+            };
 
-          // Estimate how long the remaining animation needs (~20ms/char, capped at 2s).
-          const remainingChars = Math.max(0, data.reply.length - currentContent.length);
-          const animDelay = Math.min(2200, remainingChars * 20 + 300);
+            const animatingMsg: ChatMessage = { ...finalMsg, isStreaming: true };
+            setStreamingMessage(animatingMsg);
 
-          if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-          animationTimeoutRef.current = setTimeout(() => {
-            setMessages((prev) => [...prev, finalMsg]);
-            setStreamingMessage(null);
-            animationTimeoutRef.current = null;
-          }, animDelay);
+            const remainingChars = Math.max(0, data.reply.length - currentContent.length);
+            const animDelay = Math.min(2200, remainingChars * 20 + 300);
 
-          if (!activeSessionId) {
-            setActiveSessionId(data.session_id);
-            await loadSessions();
-          }
-          break;
+            if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+            animationTimeoutRef.current = setTimeout(() => {
+              setMessages((prev) => [...prev, finalMsg]);
+              setStreamingMessage(null);
+              animationTimeoutRef.current = null;
+            }, animDelay);
+
+            if (!activeSessionId) {
+              setActiveSessionId(data.session_id);
+              await loadSessions();
+            }
+            break;
         }
       }
       setTimeout(
@@ -642,7 +723,140 @@ function AnimatedLogo({ colors }: { colors: any }) {
 }
 
 // ── Thinking Section (collapsible) ─────────────────────────────────────────
+function ThinkingSection({
+  msg,
+  colors,
+}: {
+  msg: ChatMessage;
+  colors: any;
+}) {
+  const { thinking, toolEvents, isStreaming } = msg;
+  const s = msg.content || "";
+  const th = msg.thinking || "";
 
+  // If thinking is exactly the same as content (or prefix), it's redundant.
+  const isRedundant = th.length > 0 && s.startsWith(th.substring(0, Math.min(th.length, 100)));
+
+  const hasThinking = !!th && !isRedundant;
+  const hasTools = toolEvents && toolEvents.length > 0;
+
+  if (!hasThinking && !hasTools && !isStreaming) return null;
+
+  // Helper to map tool name to label/icon
+  const getToolInfo = (toolName: string) => {
+    switch (toolName) {
+      case 'google_search':
+        return { label: 'Searching Google', icon: 'search' as const };
+      case 'gmail_fetch':
+      case 'gmail_search':
+        return { label: 'Checking Gmail', icon: 'mail' as const };
+      case 'calendar_search':
+        return { label: 'Checking Calendar', icon: 'calendar' as const };
+      case 'web_scraping':
+        return { label: 'Reading website', icon: 'globe' as const };
+      default:
+        return { label: `Using ${toolName}`, icon: 'construct' as const };
+    }
+  };
+
+  // If we have reasoning_steps (new chronological model), use them
+  if (msg.reasoning_steps && msg.reasoning_steps.length > 0) {
+    return (
+      <ChainOfThought defaultOpen={true} colors={colors}>
+        {msg.reasoning_steps.map((step, i) => {
+          if (step.type === 'tool') {
+            const info = getToolInfo(step.tool);
+            return (
+              <ChainOfThoughtStep
+                key={`step-${i}`}
+                label={`${info.label}${step.status === 'running' ? '...' : ''}`}
+                status={step.status === 'running' ? 'active' : 'complete'}
+                icon={info.icon}
+                description={step.input ? (typeof step.input === 'string' ? step.input : JSON.stringify(step.input)) : undefined}
+                colors={colors}
+              />
+            );
+          } else {
+            // It's a thinking step
+            const isLast = i === msg.reasoning_steps!.length - 1;
+            const hasToolsBefore = msg.reasoning_steps!.slice(0, i).some(s => s.type === 'tool');
+            
+            let label = "Thinking...";
+            if (!isStreaming) {
+               label = hasToolsBefore ? "Reasoning" : "Thinking process";
+            } else if (hasToolsBefore) {
+               label = "Reasoning...";
+            }
+
+            return (
+              <React.Fragment key={`step-${i}`}>
+                <ChainOfThoughtStep
+                  label={label}
+                  status={step.status === 'active' ? 'active' : 'complete'}
+                  icon="sparkles"
+                  colors={colors}
+                />
+                {step.content ? (
+                  <View style={{ marginLeft: 32, marginBottom: 8 }}>
+                    <Markdown style={getThinkingMarkdownStyles(colors) as any}>
+                      {step.content}
+                    </Markdown>
+                  </View>
+                ) : null}
+              </React.Fragment>
+            );
+          }
+        })}
+      </ChainOfThought>
+    );
+  }
+
+  // Fallback for older messages/cached items without reasoning_steps
+  return (
+    <ChainOfThought defaultOpen={true} colors={colors}>
+      {toolEvents?.map((t, i) => {
+        const info = getToolInfo(t.tool);
+        return (
+          <React.Fragment key={`tool-${i}`}>
+            <ChainOfThoughtStep
+              label={`${info.label}${t.status === 'running' ? '...' : ''}`}
+              status={t.status === 'running' ? 'active' : 'complete'}
+              icon={info.icon}
+              description={t.input ? (typeof t.input === 'string' ? t.input : JSON.stringify(t.input)) : undefined}
+              colors={colors}
+            />
+          </React.Fragment>
+        );
+      })}
+
+      {hasThinking && (
+        <ChainOfThoughtStep
+          label={isStreaming ? "Thinking..." : "Reasoning process"}
+          status={isStreaming ? "active" : "complete"}
+          icon="sparkles"
+          colors={colors}
+        />
+      )}
+
+      {hasThinking && (
+        <View style={{ marginLeft: 32, marginBottom: 8 }}>
+          <Markdown style={getThinkingMarkdownStyles(colors) as any}>
+            {th}
+          </Markdown>
+        </View>
+      )}
+
+      {isStreaming && !hasThinking && !hasTools && (
+        <ChainOfThoughtStep
+          label="Processing..."
+          status="active"
+          icon="ellipsis-horizontal"
+          colors={colors}
+        />
+      )}
+    </ChainOfThought>
+  );
+}
 
 // ── Message Bubble ─────────────────────────────────────────────────────────
 function MessageBubble({
@@ -689,7 +903,6 @@ function MessageBubble({
   };
 
   const getDocLabel = (url: string) => {
-    // Strip the hash prefix added by the backend (e.g. "abc123.pdf" → show as-is, but try to shorten)
     const parts = url.split("/");
     return parts[parts.length - 1] || url;
   };
@@ -702,105 +915,104 @@ function MessageBubble({
     : isUser ? "85%" : "90%";
 
   return (
-    <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 16 }]}>
-      {!isUser && (
-        <Image
-          source={require("../assets/logo.png")}
-          style={{ width: 24, height: 24 }}
-          resizeMode="contain"
+    <View style={{ flex: 1 }}>
+      {msg.role === "assistant" && (
+        <ThinkingSection
+          msg={msg}
+          colors={colors}
         />
       )}
-      <View style={{ flexShrink: 1, maxWidth: bubbleMaxWidth }}>
-        {msg.role === "assistant" && msg.isThinking && !msg.content && (
-          <TextGenerateEffect
-            words="Thinking..."
-            style={[b.text, { fontStyle: "italic", opacity: 0.7 }]}
-            filter={false}
-            duration={0.3}
+      <View style={[b.row, isUser ? b.rowUser : b.rowAI, { marginBottom: 16 }]}>
+        {!isUser && (
+          <Image
+            source={require("../assets/logo.png")}
+            style={{ width: 24, height: 24, marginTop: 4 }}
+            resizeMode="contain"
           />
         )}
-        <View
-          style={[
-            b.bubble,
-            isUser ? b.userBubble : b.aiBubble,
-          ]}
-        >
-          {hasImages && (
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                gap: 8,
-                marginBottom: msg.content || hasDocs ? 8 : 0,
-              }}
-            >
-              {parsedImageUrls.map((url, i) => (
-                <Image
-                  key={i}
-                  source={{
-                    uri:
-                      url.startsWith("http") ||
+        <View style={{ flexShrink: 1, maxWidth: bubbleMaxWidth }}>
+          <View
+            style={[
+              b.bubble,
+              isUser ? b.userBubble : b.aiBubble,
+            ]}
+          >
+            {hasImages && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: msg.content || hasDocs ? 8 : 0,
+                }}
+              >
+                {parsedImageUrls.map((url, i) => (
+                  <Image
+                    key={i}
+                    source={{
+                      uri:
+                        url.startsWith("http") ||
                         url.startsWith("blob:") ||
                         url.startsWith("file:") ||
                         url.startsWith("data:")
+                          ? url
+                          : `http://127.0.0.1:8000${url}`,
+                    }}
+                    style={{ width: 200, height: 200, borderRadius: 8 }}
+                    resizeMode="cover"
+                  />
+                ))}
+              </View>
+            )}
+            {hasDocs && (
+              <View style={{ gap: 6, marginBottom: msg.content ? 8 : 0 }}>
+                {docUrls.map((url, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[b.docChip, isUser && b.docChipUser]}
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      const fullUrl = url.startsWith("http")
                         ? url
-                        : `http://127.0.0.1:8000${url}`,
-                  }}
-                  style={{ width: 200, height: 200, borderRadius: 8 }}
-                  resizeMode="cover"
-                />
-              ))}
-            </View>
-          )}
-          {hasDocs && (
-            <View style={{ gap: 6, marginBottom: msg.content ? 8 : 0 }}>
-              {docUrls.map((url, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={[b.docChip, isUser && b.docChipUser]}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    const fullUrl = url.startsWith("http")
-                      ? url
-                      : `http://127.0.0.1:8000${url}`;
-                    if (Platform.OS === "web") {
-                      (window as any).open(fullUrl, "_blank");
-                    } else {
-                      Linking.openURL(fullUrl);
-                    }
-                  }}
-                >
-                  <Ionicons
-                    name={getDocIconName(url)}
-                    size={16}
-                    color={isUser ? "rgba(255,255,255,0.9)" : colors.primary}
-                  />
-                  <Text
-                    style={[b.docChipText, isUser && b.docChipTextUser]}
-                    numberOfLines={1}
+                        : `http://127.0.0.1:8000${url}`;
+                      if (Platform.OS === "web") {
+                        (window as any).open(fullUrl, "_blank");
+                      } else {
+                        Linking.openURL(fullUrl);
+                      }
+                    }}
                   >
-                    {getDocLabel(url)}
-                  </Text>
-                  <Ionicons
-                    name="open-outline"
-                    size={12}
-                    color={
-                      isUser ? "rgba(255,255,255,0.6)" : colors.textSubtle
-                    }
-                  />
-                </TouchableOpacity>
+                    <Ionicons
+                      name={getDocIconName(url)}
+                      size={16}
+                      color={isUser ? "rgba(255,255,255,0.9)" : colors.primary}
+                    />
+                    <Text
+                      style={[b.docChipText, isUser && b.docChipTextUser]}
+                      numberOfLines={1}
+                    >
+                      {getDocLabel(url)}
+                    </Text>
+                    <Ionicons
+                      name="open-outline"
+                      size={12}
+                      color={
+                        isUser ? "rgba(255,255,255,0.6)" : colors.textSubtle
+                      }
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {!!msg.content &&
+              (isUser ? (
+                <Text style={[b.text, b.userText]}>{msg.content}</Text>
+              ) : (
+                renderAIContent
               ))}
-            </View>
-          )}
-          {!!msg.content &&
-            (isUser ? (
-              <Text style={[b.text, b.userText]}>{msg.content}</Text>
-            ) : (
-              renderAIContent
-            ))}
+          </View>
         </View>
       </View>
-      {/* User Avatar removed based on preference */}
     </View>
   );
 }
@@ -930,7 +1142,16 @@ const getBubbleStyles = (colors: any) =>
     },
   });
 
-
+const getThinkingMarkdownStyles = (colors: any) =>
+  StyleSheet.create({
+    body: {
+      fontSize: 13,
+      fontFamily: Fonts.regular,
+      color: colors.textSubtle,
+      lineHeight: 20,
+    },
+    paragraph: { marginBottom: 4 },
+  });
 
 const getMarkdownStyles = (colors: any) =>
   StyleSheet.create({

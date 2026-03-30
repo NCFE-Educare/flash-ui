@@ -49,7 +49,12 @@ export interface SessionDetail extends Session {
 export interface ToolEvent {
     tool: string;
     status: 'running' | 'done';
+    input?: any;
 }
+export type ReasoningStep = 
+  | { type: 'thinking'; content: string; status: 'active' | 'complete' }
+  | { type: 'tool'; tool: string; status: 'running' | 'done'; input?: any };
+
 export interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
@@ -61,6 +66,7 @@ export interface ChatMessage {
     thinking?: string;
     isThinking?: boolean;
     toolEvents?: ToolEvent[];
+    reasoning_steps?: ReasoningStep[];
 }
 export interface ChatResponse {
     reply: string;
