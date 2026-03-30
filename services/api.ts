@@ -184,8 +184,10 @@ export const sessionsApi = {
             body: JSON.stringify({ title }),
         }),
 
-    get: (token: string, sessionId: number) =>
-        apiFetch<SessionDetail>(`/sessions/${sessionId}`, { token }),
+    get: (token: string, sessionId: number, noCache = false) => {
+        const url = noCache ? `/sessions/${sessionId}?_t=${Date.now()}` : `/sessions/${sessionId}`;
+        return apiFetch<SessionDetail>(url, { token, cache: noCache ? 'no-store' : undefined });
+    },
 
     rename: (token: string, sessionId: number, title: string) =>
         apiFetch<Session>(`/sessions/${sessionId}`, {

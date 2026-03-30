@@ -457,6 +457,54 @@ export default function ChatScreen() {
     setIsTyping(false);
   };
 
+  const handleExportChat = async () => {
+    if (Platform.OS !== "web") {
+      Alert.alert("Export", "Exporting chat is currently only supported on web.");
+      return;
+    }
+
+    if (!activeSessionId || !token) {
+      Alert.alert("Export", "No active session to export.");
+      return;
+    }
+
+    try {
+      console.log("Fetching session from backend skipping cache...", activeSessionId);
+      const detail = await sessionsApi.get(token, activeSessionId, true);
+      console.log("Session fetched:", detail);
+      
+      // Robust message extraction
+      let sessionMessages: ChatMessage[] = [];
+      const responseData = detail as any;
+      if (responseData.messages && Array.isArray(responseData.messages)) {
+        sessionMessages = responseData.messages;
+      } else if (responseData.detail && Array.isArray(responseData.detail)) {
+        // Fallback for non-standard formats mentioned by the user
+        sessionMessages = responseData.detail.map((m: any) => ({
+          ...m,
+          role: m.role || (m.type === 'string' ? 'assistant' : 'user'), // Fallback role
+          content: m.content || m.msg || (typeof m === 'string' ? m : ""),
+        })).filter((m: any) => m.role && m.content);
+      }
+
+      if (sessionMessages.length === 0) {
+        // Optional: show the raw response if it fails
+        console.warn("No messages found in response:", detail);
+        Alert.alert("Export", "No messages found in this session. The server returned: " + JSON.stringify(detail).substring(0, 100));
+        return;
+      }
+
+      // Dynamically load the export service to avoid static rendering/bundling issues
+      // @ts-ignore
+      const { exportChatToPDF } = await import("../services/exportService");
+      await exportChatToPDF(sessionMessages, user?.username || "USER");
+      
+    } catch (err: any) {
+      console.error("Export error:", err);
+      Alert.alert("Export Error", "Failed to generate PDF. " + err.message);
+    }
+  };
+
   // ── Layout helpers ──
   const showPersistentSidebar = r.isDesktop && !sidebarCollapsed;
   const sidebarWidth = r.isTablet ? 200 : 250;
@@ -495,6 +543,7 @@ export default function ChatScreen() {
                 sidebarCollapsed={sidebarCollapsed}
                 onToggleSidebar={() => setSidebarCollapsed(false)}
                 onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
+                onExportChat={handleExportChat}
               />
             ) : (
               <MobileTopBar

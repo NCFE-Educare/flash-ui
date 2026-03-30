@@ -18,9 +18,10 @@ interface ChatTopBarProps {
     sidebarCollapsed: boolean;
     onToggleSidebar(): void;
     onViewReminders?(): void;
+    onExportChat?(): void;
 }
 
-export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar, onViewReminders }: ChatTopBarProps) {
+export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar, onViewReminders, onExportChat }: ChatTopBarProps) {
     const r = useResponsive();
     const { colors } = useTheme();
     const {
@@ -153,7 +154,7 @@ export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar, onViewRe
 
             {r.isDesktop && (
                 <>
-                    <TouchableOpacity style={s.exportBtn} activeOpacity={0.8}>
+                    <TouchableOpacity style={s.exportBtn} activeOpacity={0.8} onPress={onExportChat}>
                         <Ionicons name="download-outline" size={13} color={colors.textMuted} />
                         <Text style={s.exportText}>Export chat</Text>
                     </TouchableOpacity>
