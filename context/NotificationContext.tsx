@@ -65,6 +65,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [navigateToRemindersTrigger, setNavigateToRemindersTrigger] = useState(0);
   const responseDoneRef = useRef<((sessionId: number) => void) | null>(null);
 
+
   useEffect(() => {
     loadStoredNotifications().then(setNotifications);
   }, []);

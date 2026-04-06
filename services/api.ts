@@ -68,6 +68,7 @@ export interface ChatMessage {
     toolEvents?: ToolEvent[];
     reasoning_steps?: ReasoningStep[];
 }
+
 export interface ChatResponse {
     reply: string;
     user: string;

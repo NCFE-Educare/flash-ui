@@ -19,6 +19,7 @@ const NAV_ITEMS = [
     { icon: 'grid-outline', label: 'Integration' },
     { icon: 'alarm-outline', label: 'Reminders' },
     { icon: 'bulb-outline', label: 'Memories' },
+    { icon: 'videocam-outline', label: 'Video Agent' },
 ];
 
 interface SidebarProps {

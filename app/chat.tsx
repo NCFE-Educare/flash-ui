@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Animated,
   Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,6 +29,7 @@ import ChatInputArea from "../components/ChatInputArea";
 import IntegrationsPage from "../components/IntegrationsPage";
 import RemindersPage from "../components/RemindersPage";
 import MemoriesPage from "../components/MemoriesPage";
+import VideoChatAgentPage from "../components/VideoChatAgentPage";
 import { TextGenerateEffect } from "../components/TextGenerateEffect";
 import Markdown from "react-native-markdown-display";
 import {
@@ -45,6 +45,7 @@ const CHAT_VIEW = -1;
 const INTEGRATIONS_VIEW = 0;
 const REMINDERS_VIEW = 1;
 const MEMORIES_VIEW = 2;
+const VIDEO_CHAT_AGENT_VIEW = 3;
 
 // ── Thinking Cache (persists across refresh / session switches) ─────────────
 const THINKING_CACHE_KEY = "cortex_thinking_cache";
@@ -105,6 +106,8 @@ export default function ChatScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
+
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastStreamedSessionUpdate = useRef<number | null>(null);
@@ -131,6 +134,7 @@ export default function ChatScreen() {
 
   // ── SSE response_done (handled by NotificationProvider) ──
   const { registerResponseDone, refreshPending, navigateToRemindersTrigger } = useNotifications();
+  
   useEffect(() => {
     return registerResponseDone((finishedSessionId) => {
       loadSessions();
@@ -188,6 +192,7 @@ export default function ChatScreen() {
       setLoadingMessages(true);
       const detail = await sessionsApi.get(token, id);
       setMessages(hydrateThinkingFromCache(id, detail.messages));
+
       setTimeout(
         () => flatListRef.current?.scrollToEnd({ animated: true }),
         200,
@@ -338,21 +343,7 @@ export default function ChatScreen() {
             }
             currentTools = [...currentTools, { tool: data.tool, status: "running" }];
             currentReasoningSteps.push({ type: 'tool', tool: data.tool, status: 'running', input: data.input });
-            setStreamingMessage({
-              ...aiMsgBase,
-              content: currentContent,
-              thinking: currentThinking,
-              toolEvents: currentTools,
-              reasoning_steps: currentReasoningSteps
-            });
-            break;
-          case "tool_input":
-            currentTools = currentTools.map((t) =>
-              t.tool === data.tool ? { ...t, input: data.input } : t
-            );
-            currentReasoningSteps = currentReasoningSteps.map((s) => 
-               s.type === 'tool' && s.tool === data.tool ? { ...s, input: data.input } : s
-            );
+
             setStreamingMessage({
               ...aiMsgBase,
               content: currentContent,
@@ -442,6 +433,7 @@ export default function ChatScreen() {
       abortControllerRef.current = null;
     }
   };
+
 
   const stopGeneration = () => {
     if (abortControllerRef.current) {
@@ -560,6 +552,8 @@ export default function ChatScreen() {
               <RemindersPage />
             ) : selectedNav === MEMORIES_VIEW ? (
               <MemoriesPage />
+            ) : selectedNav === VIDEO_CHAT_AGENT_VIEW ? (
+              <VideoChatAgentPage />
             ) : (
               <>
                 {/* Chat body */}
@@ -626,6 +620,8 @@ export default function ChatScreen() {
             )}
             </View>
           </View>
+
+          {/* Artifacts disabled */}
 
           {/* ── Mobile/tablet drawer overlay ────────────────────────── */}
           {!r.isDesktop && drawerOpen && (
@@ -747,25 +743,10 @@ function AnimatedLogo({ colors }: { colors: any }) {
     );
   }
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 750, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 750, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
   return (
-    <Animated.Image
+    <Image
       source={require('../assets/logo.png')}
-      style={{
-        width: 24,
-        height: 24,
-        transform: [{ scale: pulseAnim }],
-      }}
+      style={{ width: 24, height: 24 }}
       resizeMode="contain"
     />
   );
@@ -1059,6 +1040,8 @@ function MessageBubble({
               ) : (
                 renderAIContent
               ))}
+            
+
           </View>
         </View>
       </View>
@@ -1071,6 +1054,13 @@ const getLayoutStyles = (colors: any) =>
   StyleSheet.create({
     root: { flex: 1, flexDirection: "row", backgroundColor: colors.background },
     main: { flex: 1, flexDirection: "column" },
+    artifactContainer: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'transparent',
+    },
     drawerOverlay: {
       ...StyleSheet.absoluteFillObject,
       zIndex: 100,

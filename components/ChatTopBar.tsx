@@ -21,7 +21,12 @@ interface ChatTopBarProps {
     onExportChat?(): void;
 }
 
-export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar, onViewReminders, onExportChat }: ChatTopBarProps) {
+export default function ChatTopBar({ 
+    sidebarCollapsed, 
+    onToggleSidebar, 
+    onViewReminders, 
+    onExportChat
+}: ChatTopBarProps) {
     const r = useResponsive();
     const { colors } = useTheme();
     const {
@@ -161,6 +166,8 @@ export default function ChatTopBar({ sidebarCollapsed, onToggleSidebar, onViewRe
                     <View style={{ width: 8 }} />
                 </>
             )}
+
+
 
             <TouchableOpacity style={s.upgradeBtn} activeOpacity={0.85}>
                 <Text style={s.upgradeText}>{r.isMobile ? 'Pro' : 'Upgrade'}</Text>
