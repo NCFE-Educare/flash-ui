@@ -30,6 +30,8 @@ import IntegrationsPage from "../components/IntegrationsPage";
 import RemindersPage from "../components/RemindersPage";
 import MemoriesPage from "../components/MemoriesPage";
 import VideoChatAgentPage from "../components/VideoChatAgentPage";
+import TasksPage from "../components/TasksPage";
+
 import { TextGenerateEffect } from "../components/TextGenerateEffect";
 import Markdown from "react-native-markdown-display";
 import {
@@ -46,6 +48,8 @@ const INTEGRATIONS_VIEW = 0;
 const REMINDERS_VIEW = 1;
 const MEMORIES_VIEW = 2;
 const VIDEO_CHAT_AGENT_VIEW = 3;
+const TASKS_VIEW = 4;
+
 
 // ── Thinking Cache (persists across refresh / session switches) ─────────────
 const THINKING_CACHE_KEY = "cortex_thinking_cache";
@@ -554,7 +558,10 @@ export default function ChatScreen() {
               <MemoriesPage />
             ) : selectedNav === VIDEO_CHAT_AGENT_VIEW ? (
               <VideoChatAgentPage />
+            ) : selectedNav === TASKS_VIEW ? (
+              <TasksPage />
             ) : (
+
               <>
                 {/* Chat body */}
                 {loadingMessages ? (
@@ -784,6 +791,7 @@ function ThinkingSection({
         return { label: 'Checking Calendar', icon: 'calendar' as const };
       case 'web_scraping':
         return { label: 'Reading website', icon: 'globe' as const };
+
       default:
         return { label: `Using ${toolName}`, icon: 'construct' as const };
     }

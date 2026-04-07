@@ -97,6 +97,113 @@ export interface Memory {
     updated_at: string;
 }
 
+// ── Kanban Types ─────────────────────────────────────────────────────────────
+export interface Workspace {
+    id: number;
+    name: string;
+    description: string;
+    owner_id: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface WorkspaceMember {
+    id: number;
+    workspace_id: number;
+    user_id: number;
+    role: 'owner' | 'member';
+    email: string;
+    username: string;
+    added_at: string;
+}
+
+export interface BoardColumn {
+    id: number;
+    workspace_id: number;
+    name: string;
+    position: number;
+    color: string;
+    created_at: string;
+}
+
+export interface Task {
+    id: number;
+    title: string;
+    description?: string;
+    assignee_id?: number | null;
+    assignee_email?: string | null;
+    reporter_id: number;
+    priority: "low" | "medium" | "high" | "urgent";
+    due_date?: string;
+    position: number;
+    column_id: number;
+    workspace_id: number;
+    created_at: string;
+    updated_at: string;
+    assignee_name?: string;
+    reporter_name?: string;
+    column_name?: string;
+    column_color?: string;
+}
+
+
+export interface TaskComment {
+    id: number;
+    task_id: number;
+    user_id: number;
+    comment: string;
+    created_at: string;
+    username: string;
+    email: string;
+}
+
+export interface TaskAttachment {
+    id: number;
+    task_id: number;
+    user_id: number;
+    file_name: string;
+    file_url: string;
+    file_type: string;
+    file_size: number;
+    created_at: string;
+    username: string;
+}
+
+export interface WorkspaceDetail {
+    workspace: Workspace;
+    members: WorkspaceMember[];
+    columns: BoardColumn[];
+    tasks: Task[];
+}
+
+export interface KanbanAnalytics {
+    tasks_by_column: { column_name: string; color: string; task_count: number }[];
+    tasks_by_priority: { priority: string; count: number }[];
+    tasks_by_assignee: { username: string; email: string; task_count: number }[];
+    overdue_tasks: { id: number; title: string; due_date: string; assignee_name: string }[];
+    completion_rate: number;
+    total_tasks: number;
+    completed_tasks: number;
+    tasks_over_time: { date: string; count: number }[];
+}
+
+export interface DashboardSummary {
+    workspaces_count: number;
+    active_tasks: number;
+    overdue_tasks: number;
+    completed_this_week: number;
+    pending_invitations: number;
+    upcoming_tasks: {
+        id: number;
+        title: string;
+        priority: string;
+        due_date: string;
+        workspace_name: string;
+        column_name: string;
+    }[];
+}
+
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
     signup: (email: string, username: string, password: string) =>
@@ -326,3 +433,164 @@ export const chatApi = {
         return response;
     },
 };
+
+// ── Kanban ────────────────────────────────────────────────────────────────────
+export const kanbanApi = {
+    // Workspaces
+    createWorkspace: (token: string, name: string, description: string) =>
+        apiFetch<{ workspace: Workspace }>('/workspaces', {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ name, description }),
+        }),
+
+    listWorkspaces: (token: string) =>
+        apiFetch<{ workspaces: Workspace[] }>('/workspaces', { token }),
+
+    getWorkspace: (token: string, id: number) =>
+        apiFetch<WorkspaceDetail>(`/workspaces/${id}`, { token }),
+
+    updateWorkspace: (token: string, id: number, name: string, description: string) =>
+        apiFetch<{ workspace: Workspace }>(`/workspaces/${id}`, {
+            method: 'PUT',
+            token,
+            body: JSON.stringify({ name, description }),
+        }),
+
+    deleteWorkspace: (token: string, id: number) =>
+        apiFetch<{ deleted: boolean }>(`/workspaces/${id}`, { method: 'DELETE', token }),
+
+    // Members
+    inviteMember: (token: string, workspaceId: number, email: string) =>
+        apiFetch<{ message: string; member?: WorkspaceMember; invitation?: any; user_exists: boolean }>(
+            `/workspaces/${workspaceId}/invite`,
+            {
+                method: 'POST',
+                token,
+                body: JSON.stringify({ email }),
+            }
+        ),
+
+    listMembers: (token: string, workspaceId: number) =>
+        apiFetch<{ members: WorkspaceMember[] }>(`/workspaces/${workspaceId}/members`, { token }),
+
+    acceptInvitation: (token: string, invitationToken: string) =>
+        apiFetch<{ message: string; workspace: Workspace }>(`/invitations/accept?token=${invitationToken}`, { token }),
+
+    listPendingInvitations: (token: string) =>
+        apiFetch<{ invitations: any[] }>('/invitations/pending', { token }),
+
+    removeMember: (token: string, workspaceId: number, userId: number) =>
+        apiFetch<{ removed: boolean }>(`/workspaces/${workspaceId}/members/${userId}`, {
+            method: 'DELETE',
+            token,
+        }),
+
+    // Columns
+    listColumns: (token: string, workspaceId: number) =>
+        apiFetch<{ columns: BoardColumn[] }>(`/workspaces/${workspaceId}/columns`, { token }),
+
+    createColumn: (token: string, workspaceId: number, name: string, position: number, color: string) =>
+        apiFetch<{ column: BoardColumn }>(`/workspaces/${workspaceId}/columns`, {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ name, position, color }),
+        }),
+
+    updateColumn: (token: string, columnId: number, name: string, position: number, color: string) =>
+        apiFetch<{ column: BoardColumn }>(`/columns/${columnId}`, {
+            method: 'PUT',
+            token,
+            body: JSON.stringify({ name, position, color }),
+        }),
+
+    deleteColumn: (token: string, columnId: number) =>
+        apiFetch<{ deleted: boolean }>(`/columns/${columnId}`, { method: 'DELETE', token }),
+
+    // Tasks
+    createTask: (token: string, workspaceId: number, taskData: Partial<Task>) =>
+        apiFetch<{ task: Task }>(`/workspaces/${workspaceId}/tasks`, {
+            method: 'POST',
+            token,
+            body: JSON.stringify(taskData),
+        }),
+
+    listTasks: (token: string, workspaceId: number) =>
+        apiFetch<{ tasks: Task[] }>(`/workspaces/${workspaceId}/tasks`, { token }),
+
+    getTask: (token: string, taskId: number) =>
+        apiFetch<{ task: Task; comments: TaskComment[]; attachments: TaskAttachment[] }>(`/tasks/${taskId}`, { token }),
+
+    updateTask: (token: string, taskId: number, taskData: Partial<Task>) =>
+        apiFetch<{ task: Task }>(`/tasks/${taskId}`, {
+            method: 'PATCH',
+            token,
+            body: JSON.stringify(taskData),
+        }),
+
+    deleteTask: (token: string, taskId: number) =>
+        apiFetch<{ deleted: boolean }>(`/tasks/${taskId}`, { method: 'DELETE', token }),
+
+    // Comments
+    addComment: (token: string, taskId: number, comment: string) =>
+        apiFetch<{ comment: TaskComment }>(`/tasks/${taskId}/comments`, {
+            method: 'POST',
+            token,
+            body: JSON.stringify({ comment }),
+        }),
+
+    listComments: (token: string, taskId: number) =>
+        apiFetch<{ comments: TaskComment[] }>(`/tasks/${taskId}/comments`, { token }),
+
+    // Attachments
+    uploadAttachment: async (token: string, taskId: number, fileUri: string, fileName: string) => {
+        const formData = new FormData();
+        const extension = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
+        const mimeType = extension === 'pdf' ? 'application/pdf' : 'image/jpeg';
+
+        if (Platform.OS === 'web') {
+            const response = await fetch(fileUri);
+            const blob = await response.blob();
+            formData.append('file', blob, fileName);
+        } else {
+            // @ts-ignore
+            formData.append('file', {
+                uri: fileUri,
+                type: mimeType,
+                name: fileName
+            });
+        }
+
+        const res = await fetch(`${BASE_URL}/tasks/${taskId}/attachments`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || `Upload failed with status ${res.status}`);
+        }
+
+        return res.json() as Promise<{ attachment: TaskAttachment }>;
+    },
+
+    listAttachments: (token: string, taskId: number) =>
+        apiFetch<{ attachments: TaskAttachment[] }>(`/tasks/${taskId}/attachments`, { token }),
+
+    // Activity & Analytics
+    getActivity: (token: string, workspaceId: number, limit = 50) =>
+        apiFetch<{ activity: any[] }>(`/workspaces/${workspaceId}/activity?limit=${limit}`, { token }),
+
+    getWorkspaceAnalytics: (token: string, workspaceId: number) =>
+        apiFetch<KanbanAnalytics>(`/workspaces/${workspaceId}/analytics`, { token }),
+
+    getMyAnalytics: (token: string) =>
+        apiFetch<any>('/analytics/me', { token }),
+
+    getDashboardSummary: (token: string) =>
+        apiFetch<DashboardSummary>('/dashboard/summary', { token }),
+};
+

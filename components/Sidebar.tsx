@@ -20,7 +20,9 @@ const NAV_ITEMS = [
     { icon: 'alarm-outline', label: 'Reminders' },
     { icon: 'bulb-outline', label: 'Memories' },
     { icon: 'videocam-outline', label: 'Video Agent' },
+    { icon: 'list-outline', label: 'Tasks' },
 ];
+
 
 interface SidebarProps {
     selectedNav: number;
