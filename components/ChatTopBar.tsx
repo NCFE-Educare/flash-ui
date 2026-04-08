@@ -13,6 +13,7 @@ import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
+import SidebarTrigger from './SidebarTrigger';
 
 interface ChatTopBarProps {
     sidebarCollapsed: boolean;
@@ -49,12 +50,7 @@ export default function ChatTopBar({
 
     return (
         <View style={s.root}>
-            {/* Sidebar toggle (when collapsed on desktop) */}
-            {sidebarCollapsed && (
-                <TouchableOpacity onPress={onToggleSidebar} style={s.sidebarToggle}>
-                    <Ionicons name="menu-outline" size={24} color={colors.text} />
-                </TouchableOpacity>
-            )}
+            {sidebarCollapsed && <SidebarTrigger style={{ marginRight: 12 }} />}
 
             {/* Cortex dropdown */}
             <TouchableOpacity style={s.dropdown} activeOpacity={0.8}>
@@ -71,7 +67,7 @@ export default function ChatTopBar({
             <View style={{ width: 8 }} />
 
             {/* Notification bell */}
-            <View style={s.bellWrap}>
+            <div style={s.bellWrap}>
                 <TouchableOpacity
                     onPress={() => setDropdownOpen((o) => !o)}
                     style={s.iconBtn}
@@ -154,7 +150,7 @@ export default function ChatTopBar({
                         </View>
                     </>
                 )}
-            </View>
+            </div>
             <View style={{ width: 8 }} />
 
             {r.isDesktop && (
@@ -166,8 +162,6 @@ export default function ChatTopBar({
                     <View style={{ width: 8 }} />
                 </>
             )}
-
-
 
             <TouchableOpacity style={s.upgradeBtn} activeOpacity={0.85}>
                 <Text style={s.upgradeText}>{r.isMobile ? 'Pro' : 'Upgrade'}</Text>
@@ -199,7 +193,6 @@ const getStyles = (colors: any) => StyleSheet.create({
         elevation: 50,
         overflow: 'visible',
     },
-    sidebarToggle: { marginRight: 10 },
     bellWrap: { position: 'relative', overflow: 'visible' },
     badge: {
         position: 'absolute',

@@ -63,16 +63,16 @@ export default function CreateColumnModal({
     try {
       setLoading(true);
       if (column) {
-         // Update Mode
+         // Update Mode (PUT /columns/{id})
          await kanbanApi.updateColumn(
            token, 
            column.id, 
            name.trim(), 
-           column.position, 
+           column.position, // preserve current position as requested
            selectedColor
          );
       } else {
-         // Create Mode
+         // Create Mode (POST /workspaces/{id}/columns)
          await kanbanApi.createColumn(
            token, 
            workspaceId, 
@@ -98,7 +98,7 @@ export default function CreateColumnModal({
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={s.container}>
           <View style={s.header}>
-            <Text style={s.title}>{column ? "Rename Column" : "Add Column"}</Text>
+            <Text style={s.title}>{column ? "Manage Column" : "New Column"}</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={colors.text} />
             </TouchableOpacity>
@@ -108,7 +108,7 @@ export default function CreateColumnModal({
             <Text style={s.label}>Stage Name</Text>
             <TextInput
               style={s.input}
-              placeholder="e.g. Backlog, Doing..."
+              placeholder="e.g. In Progress, Testing..."
               placeholderTextColor={colors.textMuted}
               value={name}
               onChangeText={setName}
@@ -164,7 +164,7 @@ const getStyles = (colors: any) =>
     title: { fontSize: 18, fontFamily: Fonts.bold, color: colors.text },
     content: { padding: 20 },
     label: { fontSize: 12, fontFamily: Fonts.bold, color: colors.textSubtle, textTransform: "uppercase", marginBottom: 12 },
-    input: { height: 48, backgroundColor: colors.inputBg, borderRadius: 10, paddingHorizontal: 16, fontSize: 15, color: colors.text, borderBottomWidth: 1, borderColor: colors.border, marginBottom: 24, ...({ outlineWidth: 0 } as any) },
+    input: { height: 48, backgroundColor: colors.inputBg, borderRadius: 10, paddingHorizontal: 16, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 24, ...({ outlineWidth: 0 } as any) },
     colorRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
     colorOption: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
     colorOptionActive: { borderColor: '#fff' },

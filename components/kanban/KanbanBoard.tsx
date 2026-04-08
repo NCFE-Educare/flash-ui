@@ -9,6 +9,9 @@ import {
   Platform,
   TextInput,
   Alert,
+  Modal,
+  TouchableWithoutFeedback,
+  GestureResponderEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { 
@@ -52,6 +55,12 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
   const [isInviteModalVisible, setIsInviteModalVisible] = useState(false);
   const [isCreateColumnModalVisible, setIsCreateColumnModalVisible] = useState(false);
   const [columnToEdit, setColumnToEdit] = useState<BoardColumn | null>(null);
+  
+  // Custom Menu state
+  const [activeMenuColumn, setActiveMenuColumn] = useState<BoardColumn | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const [isDeleteConfirmVisible, setIsDeleteConfirmVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadBoard = useCallback(async () => {
     if (!token) return;
@@ -104,63 +113,30 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
     }
   };
 
-  const handleDeleteColumn = (column: BoardColumn) => {
-    const tasksInColumn = board?.tasks.filter(t => t.column_id === column.id).length || 0;
-    
-    const message = tasksInColumn > 0 
-      ? `This column has ${tasksInColumn} tasks. Deleting it will permanently remove all tasks within it. Are you sure?`
-      : `Are you sure you want to delete the "${column.name}" column?`;
-
-    Alert.alert(
-      "Delete Column",
-      message,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              if (!token) return;
-              await kanbanApi.deleteColumn(token, column.id);
-              loadBoard();
-            } catch (err: any) {
-              Alert.alert("Error", err.message);
-            }
-          }
-        }
-      ]
-    );
+  const handleColumnAction = (event: GestureResponderEvent, column: BoardColumn) => {
+     const { pageX, pageY } = event.nativeEvent;
+     setMenuPos({ x: pageX, y: pageY });
+     setActiveMenuColumn(column);
+     setIsDeleteConfirmVisible(false);
   };
 
-  const handleColumnAction = (column: BoardColumn) => {
-    if (Platform.OS === 'web') {
-       // On web, Alert.alert shows buttons sequentially. Let's use it for now as a simple menu.
-       Alert.alert(
-         column.name,
-         "Column Actions",
-         [
-           { text: "Cancel", style: "cancel" },
-           { text: "Rename", onPress: () => {
-              setColumnToEdit(column);
-              setIsCreateColumnModalVisible(true);
-           }},
-           { text: "Delete", style: "destructive", onPress: () => handleDeleteColumn(column) }
-         ]
-       );
-    } else {
-       Alert.alert(
-         column.name,
-         "",
-         [
-           { text: "Cancel", style: "cancel" },
-           { text: "Rename Column", onPress: () => {
-              setColumnToEdit(column);
-              setIsCreateColumnModalVisible(true);
-           }},
-           { text: "Delete Column", style: "destructive", onPress: () => handleDeleteColumn(column) }
-         ]
-       );
+  const confirmDeleteColumn = async () => {
+    if (!token || !activeMenuColumn) return;
+    try {
+      setIsDeleting(true);
+      console.log(`[BOARD] Hitting DELETE API for column ID: ${activeMenuColumn.id}`);
+      await kanbanApi.deleteColumn(token, activeMenuColumn.id);
+      
+      console.log(`[BOARD] Deletion successful, refreshing board...`);
+      await loadBoard();
+      
+      setActiveMenuColumn(null);
+      setIsDeleteConfirmVisible(false);
+    } catch (err: any) {
+      console.error("[BOARD] Failed to delete column", err.message);
+      Alert.alert("Error", err.message || "Could not delete column");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -168,7 +144,7 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
     t.title.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  const s = getStyles(colors);
+  const s = getStyles(colors, menuPos);
 
   if (loading && !board) {
     return (
@@ -248,7 +224,6 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
 
       {/* Content */}
       <View style={s.content}>
-        {/* Render logic remains the same */}
         {activeTab === "summary" && (
           <WorkspaceAnalytics workspaceId={workspaceId} />
         )}
@@ -275,7 +250,8 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
                     </View>
                     <TouchableOpacity 
                       style={s.columnAction}
-                      onPress={() => handleColumnAction(column)}
+                      onPress={(e) => handleColumnAction(e, column)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Ionicons name="ellipsis-horizontal" size={16} color={colors.textSubtle} />
                     </TouchableOpacity>
@@ -362,7 +338,6 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
           </DragDropContext>
         )}
 
-        {/* Existing timeline view logic */}
         {activeTab === "timeline" && (
            <View style={s.center}>
              <Ionicons name="time-outline" size={48} color={colors.textSubtle} />
@@ -370,6 +345,53 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
            </View>
         )}
       </View>
+
+      {/* Column Context Menu */}
+      {activeMenuColumn && (
+        <Modal transparent visible={!!activeMenuColumn} animationType="fade" onRequestClose={() => setActiveMenuColumn(null)}>
+           <TouchableWithoutFeedback onPress={() => setActiveMenuColumn(null)}>
+              <View style={s.menuOverlay}>
+                 <TouchableWithoutFeedback>
+                    <View style={s.menuContainer}>
+                       {isDeleteConfirmVisible ? (
+                          <View style={s.confirmBox}>
+                             <Text style={s.confirmTitle}>Delete Column?</Text>
+                             <Text style={s.confirmSub}>All tasks in this section will be removed permanently.</Text>
+                             <View style={s.confirmActions}>
+                                <TouchableOpacity style={s.cancelBtnSmall} onPress={() => setIsDeleteConfirmVisible(false)}>
+                                   <Text style={s.cancelBtnTextSmall}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={s.deleteBtnSmall} onPress={confirmDeleteColumn} disabled={isDeleting}>
+                                   <Text style={s.deleteBtnTextSmall}>{isDeleting ? "Deleting..." : "Confirm Delete"}</Text>
+                                </TouchableOpacity>
+                             </View>
+                          </View>
+                       ) : (
+                          <>
+                             <View style={s.menuHeader}>
+                                <Text style={s.menuTitle}>{activeMenuColumn.name}</Text>
+                             </View>
+                             <TouchableOpacity style={s.menuItem} onPress={() => { setColumnToEdit(activeMenuColumn); setActiveMenuColumn(null); setIsCreateColumnModalVisible(true); }}>
+                                <Ionicons name="pencil-outline" size={18} color={colors.text} />
+                                <Text style={s.menuItemText}>Change Name</Text>
+                             </TouchableOpacity>
+                             <TouchableOpacity style={s.menuItem} onPress={() => { setColumnToEdit(activeMenuColumn); setActiveMenuColumn(null); setIsCreateColumnModalVisible(true); }}>
+                                <Ionicons name="color-palette-outline" size={18} color={colors.text} />
+                                <Text style={s.menuItemText}>Change Color</Text>
+                             </TouchableOpacity>
+                             <View style={s.menuDivider} />
+                             <TouchableOpacity style={[s.menuItem]} onPress={() => setIsDeleteConfirmVisible(true)}>
+                                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                                <Text style={[s.menuItemText, { color: '#ef4444' }]}>Delete Column</Text>
+                             </TouchableOpacity>
+                          </>
+                       )}
+                    </View>
+                 </TouchableWithoutFeedback>
+              </View>
+           </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       {/* Modals */}
       {createTaskColumnId && (
@@ -414,7 +436,7 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
   );
 }
 
-const getStyles = (colors: any) =>
+const getStyles = (colors: any, menuPos: { x: number, y: number }) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
@@ -447,11 +469,45 @@ const getStyles = (colors: any) =>
     columnTitle: { fontSize: 12, fontFamily: Fonts.bold, color: colors.textSubtle, letterSpacing: 0.5 },
     countBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginLeft: 8 },
     countText: { fontSize: 11, fontFamily: Fonts.bold, color: colors.textSubtle },
-    columnAction: { marginLeft: "auto", padding: 4 },
+    columnAction: { marginLeft: "auto", padding: 8 },
     taskList: { minHeight: 100, borderRadius: 8, padding: 2 },
     taskContainer: { marginBottom: 8 },
     addTaskBtn: { flexDirection: "row", alignItems: "center", padding: 10, borderRadius: 6, gap: 8, marginTop: 8 },
     addTaskText: { fontSize: 14, fontFamily: Fonts.medium, color: colors.textSubtle },
     addColumnBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginTop: 8, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border },
-    msg: { fontSize: 14, color: colors.textSubtle, fontFamily: Fonts.medium, marginTop: 16 }
+    msg: { fontSize: 14, color: colors.textSubtle, fontFamily: Fonts.medium, marginTop: 16 },
+    // RELATIVE Menu Styles
+    menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
+    menuContainer: { 
+      position: 'absolute',
+      // Offset by roughly half width and full height of the icon
+      top: Math.max(20, menuPos.y + 10), 
+      left: Math.max(20, menuPos.x - 210), 
+      backgroundColor: colors.surface, 
+      borderRadius: 12, 
+      width: 230, 
+      padding: 4, 
+      shadowColor: '#000', 
+      shadowOffset: { width: 0, height: 8 }, 
+      shadowOpacity: 0.2, 
+      shadowRadius: 15, 
+      elevation: 20, 
+      borderWidth: 1, 
+      borderColor: colors.border,
+      zIndex: 99999,
+    },
+    menuHeader: { padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4 },
+    menuTitle: { fontSize: 11, fontFamily: Fonts.bold, color: colors.textSubtle, textTransform: 'uppercase', letterSpacing: 1 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 8, gap: 12 },
+    menuItemText: { fontSize: 14, fontFamily: Fonts.medium, color: colors.text },
+    menuDivider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
+    // Confirm Box Styles
+    confirmBox: { padding: 16 },
+    confirmTitle: { fontSize: 15, fontFamily: Fonts.bold, color: colors.text, marginBottom: 8 },
+    confirmSub: { fontSize: 12, fontFamily: Fonts.regular, color: colors.textSubtle, lineHeight: 18, marginBottom: 16 },
+    confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
+    cancelBtnSmall: { paddingHorizontal: 12, paddingVertical: 8 },
+    cancelBtnTextSmall: { fontSize: 13, fontFamily: Fonts.medium, color: colors.textSubtle },
+    deleteBtnSmall: { backgroundColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6 },
+    deleteBtnTextSmall: { fontSize: 13, fontFamily: Fonts.bold, color: '#fff' }
   });
