@@ -29,7 +29,8 @@ export default function ChatTopBar({
     onExportChat
 }: ChatTopBarProps) {
     const r = useResponsive();
-    const { colors } = useTheme();
+    const { colors, mode, setMode } = useTheme();
+    const ThemeIcon = mode === 'light' ? 'moon-outline' : 'sunny-outline';
     const {
         notifications,
         notificationCount,
@@ -68,7 +69,13 @@ export default function ChatTopBar({
 
             {/* Actions — hide Export on tablet to save space */}
             <TopBarBtn icon="ellipsis-horizontal" colors={colors} />
-            <TopBarBtn icon="link-outline" colors={colors} />
+            <TouchableOpacity 
+                style={s.iconBtn} 
+                activeOpacity={0.7} 
+                onPress={() => setMode(mode === 'light' ? 'dark' : 'light')}
+            >
+                <Ionicons name={ThemeIcon} size={17} color={colors.textMuted} />
+            </TouchableOpacity>
             <View style={{ width: 8 }} />
 
             {/* Notification bell */}

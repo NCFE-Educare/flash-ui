@@ -32,6 +32,7 @@ import RemindersPage from "../components/RemindersPage";
 import MemoriesPage from "../components/MemoriesPage";
 import VideoChatAgentPage from "../components/VideoChatAgentPage";
 import TasksPage from "../components/TasksPage";
+import AppsPage from "../components/AppsPage";
 
 import { TextGenerateEffect } from "../components/TextGenerateEffect";
 import Markdown from "react-native-markdown-display";
@@ -50,6 +51,7 @@ const REMINDERS_VIEW = 1;
 const MEMORIES_VIEW = 2;
 const VIDEO_CHAT_AGENT_VIEW = 3;
 const TASKS_VIEW = 4;
+const APPS_VIEW = 5;
 
 
 // ── Thinking Cache (persists across refresh / session switches) ─────────────
@@ -555,6 +557,8 @@ export default function ChatScreen() {
                                 <VideoChatAgentPage />
                             ) : selectedNav === TASKS_VIEW ? (
                                 <TasksPage />
+                            ) : selectedNav === APPS_VIEW ? (
+                                <AppsPage />
                             ) : (
 
                                 <>
