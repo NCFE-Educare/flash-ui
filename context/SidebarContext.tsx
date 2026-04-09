@@ -16,7 +16,7 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode, defaultOpen?
   defaultOpen = true 
 }) => {
   const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const isMobile = width < 1024;
   
   const [open, setOpenInternal] = useState(defaultOpen);
 

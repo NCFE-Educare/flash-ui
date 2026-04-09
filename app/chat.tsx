@@ -23,7 +23,7 @@ import "text-encoding-polyfill";
 import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent, ReasoningStep } from "../services/api";
 import { useNotifications } from "../context/NotificationContext";
 import { AppSidebar } from "../components/app-sidebar";
-import { useSidebar } from "../components/ui/sidebar";
+import { useSidebar, SidebarTrigger } from "../components/ui/sidebar";
 import ChatTopBar from "../components/ChatTopBar";
 import ChatWelcome from "../components/ChatWelcome";
 import ChatInputArea from "../components/ChatInputArea";
@@ -506,8 +506,7 @@ export default function ChatScreen() {
 
     // ── Layout helpers ──
     const showPersistentSidebar = r.isDesktop;
-    const sidebarWidth = open ? (r.isTablet ? 200 : 220) : 52;
-    const chatPadH = r.isDesktop ? 120 : r.isTablet ? 40 : 16;
+    const chatPadH = r.isDesktop ? 120 : r.isTablet ? 60 : 16;
 
     const layout = getLayoutStyles(colors);
 
@@ -519,23 +518,19 @@ export default function ChatScreen() {
             >
                 <View style={layout.root}>
                     {/* ── Persistent sidebar (desktop) ───────────────────────── */}
-                    {showPersistentSidebar && (
-                        <AppSidebar
-                            selectedNav={selectedNav}
-                            onNavChange={setSelectedNav}
-                            sessions={sessions}
-                            activeSessionId={activeSessionId}
-                            onSelectSession={selectSession}
-                        />
-                    )}
+                    <AppSidebar
+                        selectedNav={selectedNav}
+                        onNavChange={setSelectedNav}
+                        sessions={sessions}
+                        activeSessionId={activeSessionId}
+                        onSelectSession={selectSession}
+                    />
 
                     {/* ── Main content ────────────────────────────────────────── */}
                     <View style={layout.main}>
                         {/* Top bar (always visible on Chat, Integrations, Reminders) */}
                         {r.isDesktop ? (
                             <ChatTopBar
-                                sidebarCollapsed={!open}
-                                onToggleSidebar={() => setOpen(true)}
                                 onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
                                 onExportChat={handleExportChat}
                             />
@@ -648,9 +643,7 @@ function MobileTopBar({
     const { notificationCount } = useNotifications();
     return (
         <View style={styles.mobileTopBar}>
-            <TouchableOpacity onPress={toggleSidebar} style={{ padding: 6 }}>
-                <Ionicons name="menu-outline" size={22} color={colors.text} />
-            </TouchableOpacity>
+            <SidebarTrigger style={{ backgroundColor: 'transparent', borderWidth: 0, width: 40, height: 40 }} />
             <View style={styles.mobileLogoRow}>
                 <Image source={require('../assets/logo.png')} style={{ width: 20, height: 20 }} resizeMode="contain" />
                 <Text style={styles.mobileLogoText}>Cortex</Text>
@@ -678,9 +671,6 @@ function MobileTopBar({
                             </Text>
                         </View>
                     )}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.mobileUpgradeBtn}>
-                    <Text style={styles.mobileUpgradeText}>Upgrade</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -1073,17 +1063,6 @@ const getLayoutStyles = (colors: any) =>
             fontSize: 16,
             fontFamily: Fonts.bold,
             color: colors.text,
-        },
-        mobileUpgradeBtn: {
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 7,
-            backgroundColor: colors.text,
-        },
-        mobileUpgradeText: {
-            fontSize: 12,
-            fontFamily: Fonts.semibold,
-            color: colors.background,
         },
     });
 

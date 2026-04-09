@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Fonts } from '../constants/theme';
@@ -9,6 +9,8 @@ import LiveKitRoomView from './LiveKitRoomView';
 
 export default function VideoChatAgentPage() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
 
   // ── Connection State ──
   const [showVideoRoom, setShowVideoRoom] = useState(false);
@@ -128,12 +130,16 @@ export default function VideoChatAgentPage() {
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
       {/* Video Chat Agent Section */}
       <View style={styles.resourceSection}>
-        <Text style={[styles.sectionMainTitle, { color: colors.text }]}>Video Chat Agent</Text>
-        <Text style={[styles.sectionSubtitle, { color: colors.textSubtle }]}>
-          Real-time AI video conferencing and intelligent resource orchestration. Connect, collaborate, and manage documents seamlessly within your digital workspace.
-        </Text>
+        {!isMobile && (
+          <>
+            <Text style={[styles.sectionMainTitle, { color: colors.text }]}>Video Chat Agent</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.textSubtle }]}>
+              Real-time AI video conferencing and intelligent resource orchestration. Connect, collaborate, and manage documents seamlessly within your digital workspace.
+            </Text>
+          </>
+        )}
 
-        <View style={styles.resourceGrid}>
+        <View style={[styles.resourceGrid, { flexDirection: isMobile ? 'column' : 'row' }]}>
           {/* Join Room Card */}
           <View style={[styles.resourceCard, styles.joinRoomCard, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>
@@ -202,7 +208,7 @@ export default function VideoChatAgentPage() {
               </View>
             </View>
 
-            <View style={styles.formRow}>
+            <View style={[styles.formRow, { flexDirection: isMobile ? 'column' : 'row' }]}>
               <View style={[styles.formGroup, { flex: 1 }]}>
                 <Text style={[styles.inputLabel, { color: colors.textSubtle }]}>DOCUMENT TITLE</Text>
                 <TextInput 
@@ -225,7 +231,7 @@ export default function VideoChatAgentPage() {
               </View>
             </View>
 
-            <View style={styles.formRow}>
+            <View style={[styles.formRow, { flexDirection: isMobile ? 'column' : 'row' }]}>
               <View style={[styles.formGroup, { flex: 1 }]}>
                 <Text style={[styles.inputLabel, { color: colors.textSubtle }]}>CATEGORY</Text>
                 <TextInput 
@@ -309,7 +315,7 @@ export default function VideoChatAgentPage() {
         </View>
 
         {/* Recent Circulars List */}
-        <View style={{ marginTop: 40 }}>
+        <View style={{ marginTop: 48, paddingBottom: 100 }}>
            <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 16 }]}>Recent Circulars</Text>
            {isLoadingCirculars ? (
              <ActivityIndicator color={colors.primary} />
@@ -322,7 +328,9 @@ export default function VideoChatAgentPage() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.cardTitle, { fontSize: 15, color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-                      <Text style={{ fontSize: 11, color: colors.textMuted }}>ID: {item.circular_id} • {new Date(item.date).toLocaleDateString()}</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>
+                        ID: {item.circular_id} • {new Date(item.date).toLocaleDateString()}
+                      </Text>
                     </View>
                     <View style={[styles.newEntryBadge, { backgroundColor: item.processed ? '#22c55e' : '#f97316' }]}>
                       <Text style={styles.newEntryText}>{item.processed ? 'PROCESSED' : 'PROCESSING'}</Text>
@@ -407,7 +415,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   resourceGrid: {
-    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
     gap: 24,
     marginTop: 32,
   },
@@ -417,7 +424,8 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   joinRoomCard: {
-    width: Platform.OS === 'web' ? 320 : '100%',
+    minWidth: 320,
+    flex: 1,
   },
   uploadCard: {
     flex: 1,

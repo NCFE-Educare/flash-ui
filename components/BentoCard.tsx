@@ -100,15 +100,15 @@ const styles = StyleSheet.create({
   },
   small: {
     width: '33.33%',
-    height: 180,
+    height: 220,
   },
   wide: {
     width: '66.66%',
-    height: 180,
+    height: 220,
   },
   large: {
     width: '66.66%',
-    height: 372, // 180 * 2 + 12 (padding)
+    height: 452, // 220 * 2 + 12 (padding)
   },
   card: {
     flex: 1,

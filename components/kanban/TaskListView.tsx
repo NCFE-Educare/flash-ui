@@ -25,11 +25,11 @@ export default function TaskListView({ tasks, onTaskPress }: TaskListViewProps) 
     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
       <View style={s.table}>
         <View style={s.tableHeader}>
-          <Text style={[s.headerCell, { flex: 0.5 }]}>Key</Text>
-          <Text style={[s.headerCell, { flex: 2 }]}>Summary</Text>
-          <Text style={[s.headerCell, { flex: 1 }]}>Assignee</Text>
-          <Text style={[s.headerCell, { flex: 1 }]}>Status</Text>
-          <Text style={[s.headerCell, { flex: 0.8 }]}>Priority</Text>
+          <Text style={[s.headerCell, { flex: 0.6 }]}>Key</Text>
+          <Text style={[s.headerCell, { flex: 2.5 }]}>Summary</Text>
+          <Text style={[s.headerCell, { flex: 1.2 }]}>Assignee</Text>
+          <Text style={[s.headerCell, { flex: 1.1 }]}>Status</Text>
+          <Text style={[s.headerCell, { flex: 0.9 }]}>Priority</Text>
         </View>
 
         {tasks.length > 0 ? tasks.map((task) => (
@@ -38,28 +38,28 @@ export default function TaskListView({ tasks, onTaskPress }: TaskListViewProps) 
             style={s.row}
             onPress={() => onTaskPress(task.id)}
           >
-            <Text style={[s.cell, s.keyText, { flex: 0.5 }]}>TS-{task.id}</Text>
-            <Text style={[s.cell, s.summaryText, { flex: 2 }]} numberOfLines={1}>
+            <Text style={[s.cell, s.keyText, { flex: 0.6 }]}>TS-{task.id}</Text>
+            <Text style={[s.cell, s.summaryText, { flex: 2.5 }]} numberOfLines={1}>
               {task.title}
             </Text>
-            <View style={[s.cell, s.userCell, { flex: 1 }]}>
+            <View style={[s.cell, s.userCell, { flex: 1.2 }]}>
                <View style={[s.avatar, { backgroundColor: colors.surfaceHover }]}>
                  <Text style={s.avatarText}>{task.assignee_name?.charAt(0) || "?"}</Text>
                </View>
-               <Text style={s.cellText}>{task.assignee_name || "Unassigned"}</Text>
+               <Text style={s.cellText} numberOfLines={1} ellipsizeMode="tail">{task.assignee_name || "Unassigned"}</Text>
             </View>
-            <View style={[s.cell, { flex: 1 }]}>
+            <View style={[s.cell, { flex: 1.1 }]}>
               <View style={[s.statusBadge, { backgroundColor: task.column_color || colors.surfaceHover }]}>
-                <Text style={s.statusText}>{task.column_name?.toUpperCase()}</Text>
+                <Text style={s.statusText} numberOfLines={1}>{task.column_name?.toUpperCase()}</Text>
               </View>
             </View>
-            <View style={[s.cell, { flex: 0.8, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+            <View style={[s.cell, { flex: 0.9, flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
                <Ionicons 
                 name={task.priority === 'urgent' || task.priority === 'high' ? "chevron-up" : "remove"} 
-                size={16} 
+                size={14} 
                 color={task.priority === 'urgent' ? '#ef4444' : task.priority === 'high' ? '#ff9800' : '#3b82f6'} 
               />
-              <Text style={s.cellText}>{task.priority.toUpperCase()}</Text>
+              <Text style={[s.cellText, { fontSize: 11 }]} numberOfLines={1}>{task.priority.toUpperCase()}</Text>
             </View>
           </TouchableOpacity>
         )) : (

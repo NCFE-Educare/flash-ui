@@ -101,6 +101,7 @@ export function SidebarTrigger({ style, onPress }: { style?: any, onPress?: () =
       style={[styles.trigger, { backgroundColor: colors.surfaceHover, borderColor: colors.border }, style]}
       onPress={onPress || toggleSidebar}
       activeOpacity={0.7}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
     >
       <PanelLeft size={18} color={colors.textSubtle} />
     </TouchableOpacity>

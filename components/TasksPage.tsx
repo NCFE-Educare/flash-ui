@@ -24,7 +24,7 @@ export default function TasksPage() {
   const { token } = useAuth();
   const { width } = useWindowDimensions();
   
-  const isMobile = width < 1024;
+  const isMobile = width < 768;
   
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null);
@@ -110,7 +110,7 @@ export default function TasksPage() {
     );
   };
 
-  const s = getStyles(colors, isMobile);
+  const s = getStyles(colors, isMobile, width);
 
   const renderSidebar = () => (
     <View style={s.sidebar}>
@@ -209,20 +209,6 @@ export default function TasksPage() {
 
       {/* Main Content Area */}
       <View style={s.main}>
-        {/* Mobile Top Bar */}
-        {isMobile && (
-          <View style={s.mobileHeader}>
-            <TouchableOpacity onPress={() => setIsSidebarVisible(true)} style={s.menuBtn}>
-              <Ionicons name="menu" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={s.headerTitle}>
-              {selectedWorkspaceId 
-                ? (workspaces.find(w => w.id === selectedWorkspaceId)?.name || "Project")
-                : "Mission Control"}
-            </Text>
-            <View style={{ width: 40 }} />
-          </View>
-        )}
 
         {selectedWorkspaceId ? (
           <KanbanBoard 
@@ -231,7 +217,7 @@ export default function TasksPage() {
           />
         ) : (
           <ScrollView contentContainerStyle={s.dashboardContent}>
-            <Text style={s.pageTitle}>Dashboard overview</Text>
+            <Text style={s.pageTitle}>{selectedWorkspaceId ? (workspaces.find(w => w.id === selectedWorkspaceId)?.name || "Project") : "Mission Control"}</Text>
             
             <View style={s.statsGrid}>
               <View style={s.statCard}>
@@ -329,7 +315,7 @@ export default function TasksPage() {
   );
 }
 
-const getStyles = (colors: any, isMobile: boolean) =>
+const getStyles = (colors: any, isMobile: boolean, width: number) =>
   StyleSheet.create({
     container: { flex: 1, flexDirection: isMobile ? "column" : "row", backgroundColor: colors.background },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -361,7 +347,15 @@ const getStyles = (colors: any, isMobile: boolean) =>
     pageTitle: { fontSize: isMobile ? 22 : 28, fontFamily: Fonts.bold, color: colors.text, marginBottom: 24 },
     section: { marginBottom: 32 },
     statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 32 },
-    statCard: { flex: 1, minWidth: isMobile ? '45%' : 160, backgroundColor: colors.surface, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: colors.border },
+    statCard: { 
+      flex: 1, 
+      minWidth: isMobile ? '45%' : width < 1200 ? 140 : 180, 
+      backgroundColor: colors.surface, 
+      borderRadius: 12, 
+      padding: 20, 
+      borderWidth: 1, 
+      borderColor: colors.border 
+    },
     statCardAlert: { borderColor: '#ef444433', backgroundColor: '#ef444408' },
     statValue: { fontSize: 28, fontFamily: Fonts.bold, color: colors.text, marginBottom: 2 },
     statValueAlert: { color: '#ef4444' },

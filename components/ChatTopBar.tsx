@@ -13,23 +13,20 @@ import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
-import { SidebarTrigger } from './ui/sidebar';
+import { SidebarTrigger, useSidebar } from './ui/sidebar';
 
 interface ChatTopBarProps {
-    sidebarCollapsed: boolean;
-    onToggleSidebar(): void;
     onViewReminders?(): void;
     onExportChat?(): void;
 }
 
 export default function ChatTopBar({ 
-    sidebarCollapsed, 
-    onToggleSidebar, 
     onViewReminders, 
     onExportChat
 }: ChatTopBarProps) {
     const r = useResponsive();
     const { colors, mode, setMode } = useTheme();
+    const { open, toggleSidebar } = useSidebar();
     const ThemeIcon = mode === 'light' ? 'moon-outline' : 'sunny-outline';
     const {
         notifications,
@@ -51,11 +48,12 @@ export default function ChatTopBar({
 
     return (
         <View style={s.root}>
-            {sidebarCollapsed && (
-                <SidebarTrigger 
-                    onPress={onToggleSidebar} 
-                    style={{ marginRight: 12 }} 
-                />
+            {!open && (
+                <View style={{ zIndex: 10000, elevation: 100 }}>
+                    <SidebarTrigger 
+                        style={{ marginRight: 12 }} 
+                    />
+                </View>
             )}
 
             {/* Cortex dropdown */}
@@ -79,7 +77,7 @@ export default function ChatTopBar({
             <View style={{ width: 8 }} />
 
             {/* Notification bell */}
-            <div style={s.bellWrap}>
+            <View style={s.bellWrap}>
                 <TouchableOpacity
                     onPress={() => setDropdownOpen((o) => !o)}
                     style={s.iconBtn}
@@ -162,7 +160,7 @@ export default function ChatTopBar({
                         </View>
                     </>
                 )}
-            </div>
+            </View>
             <View style={{ width: 8 }} />
 
             {r.isDesktop && (
@@ -175,9 +173,6 @@ export default function ChatTopBar({
                 </>
             )}
 
-            <TouchableOpacity style={s.upgradeBtn} activeOpacity={0.85}>
-                <Text style={s.upgradeText}>{r.isMobile ? 'Pro' : 'Upgrade'}</Text>
-            </TouchableOpacity>
         </View>
     );
 }
@@ -334,6 +329,4 @@ const getStyles = (colors: any) => StyleSheet.create({
     iconBtn: { padding: 6 },
     exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
     exportText: { fontSize: 13, fontFamily: Fonts.medium, color: colors.textMuted },
-    upgradeBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.text },
-    upgradeText: { fontSize: 13, fontFamily: Fonts.semibold, color: colors.background },
 });

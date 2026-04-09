@@ -12,6 +12,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
   GestureResponderEvent,
+  useWindowDimensions
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { 
@@ -43,6 +44,8 @@ type BoardTab = "summary" | "list" | "board" | "timeline";
 export default function KanbanBoard({ workspaceId, workspaceName, onBack }: KanbanBoardProps) {
   const { colors } = useTheme();
   const { token } = useAuth();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   
   const [board, setBoard] = useState<WorkspaceDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,7 +147,7 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
     t.title.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  const s = getStyles(colors, menuPos);
+  const s = getStyles(colors, menuPos, isMobile);
 
   if (loading && !board) {
     return (
@@ -182,11 +185,11 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
 
       {/* Control Bar */}
       <View style={s.controlBar}>
-        <View style={s.searchContainer}>
+        <View style={[s.searchContainer, isMobile && { maxWidth: '100%' }]}>
           <Ionicons name="search" size={16} color={colors.textSubtle} style={s.searchIcon} />
           <TextInput 
             style={s.searchInput}
-            placeholder="Search board"
+            placeholder={isMobile ? "Search..." : "Search board"}
             placeholderTextColor={colors.textSubtle}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -318,7 +321,12 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
                             .map((task, index) => (
                               <Draggable key={task.id} draggableId={String(task.id)} index={index}>
                                 {(provided, snapshot) => (
-                                  <View ref={provided.innerRef as any} {...provided.draggableProps} {...provided.dragHandleProps} style={[provided.draggableProps.style as any, snapshot.isDragging && { opacity: 0.8 }]}>
+                                  <View 
+                                    ref={provided.innerRef as any} 
+                                    {...(provided.draggableProps as any)} 
+                                    {...(provided.dragHandleProps as any)} 
+                                    style={[provided.draggableProps.style as any, snapshot.isDragging && { opacity: 0.8 }]}
+                                  >
                                     <TaskCard task={task} onPress={() => setSelectedTaskId(task.id)} />
                                   </View>
                                 )}
@@ -436,23 +444,23 @@ export default function KanbanBoard({ workspaceId, workspaceName, onBack }: Kanb
   );
 }
 
-const getStyles = (colors: any, menuPos: { x: number, y: number }) =>
+const getStyles = (colors: any, menuPos: { x: number, y: number }, isMobile: boolean) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 40 },
-    tabBar: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 16, height: 48 },
-    backBtnSmall: { padding: 8, marginRight: 8 },
-    tabs: { flexDirection: 'row', height: '100%' },
-    tabItem: { paddingHorizontal: 16, justifyContent: 'center', height: '100%', position: 'relative' },
+    tabBar: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: isMobile ? 8 : 16, height: 48 },
+    backBtnSmall: { padding: 8, marginRight: 4 },
+    tabs: { flexDirection: 'row', height: '100%', gap: isMobile ? 0 : 8 },
+    tabItem: { paddingHorizontal: isMobile ? 10 : 16, justifyContent: 'center', height: '100%', position: 'relative' },
     tabItemActive: {},
-    tabText: { fontSize: 14, fontFamily: Fonts.medium, color: colors.textSubtle },
+    tabText: { fontSize: isMobile ? 13 : 14, fontFamily: Fonts.medium, color: colors.textSubtle },
     tabTextActive: { color: colors.primary, fontFamily: Fonts.bold },
-    activeTabIndicator: { position: 'absolute', bottom: 0, left: 16, right: 16, height: 2, backgroundColor: colors.primary },
-    controlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, gap: 16 },
+    activeTabIndicator: { position: 'absolute', bottom: 0, left: isMobile ? 10 : 16, right: isMobile ? 10 : 16, height: 2, backgroundColor: colors.primary },
+    controlBar: { flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', paddingHorizontal: isMobile ? 16 : 24, paddingVertical: 16, gap: 16 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceHover, borderRadius: 4, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.border, maxWidth: 300, flex: 1 },
     searchIcon: { marginRight: 8 },
     searchInput: { flex: 1, height: 32, fontSize: 14, color: colors.text, ...Platform.select({ web: { outlineStyle: 'none' } as any }) },
-    controlsRight: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+    controlsRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: isMobile ? '100%' : 'auto', gap: 20 },
     memberList: { flexDirection: 'row', alignItems: 'center' },
     avatar: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.background, alignItems: "center", justifyContent: "center", marginLeft: -8 },
     avatarText: { fontSize: 10, fontFamily: Fonts.bold, color: colors.primary },
@@ -462,8 +470,8 @@ const getStyles = (colors: any, menuPos: { x: number, y: number }) =>
     filterBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceHover, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4 },
     filterBtnText: { fontSize: 14, fontFamily: Fonts.medium, color: colors.text },
     content: { flex: 1 },
-    boardScroll: { padding: 24, paddingTop: 8 },
-    column: { width: 280, marginRight: 16 },
+    boardScroll: { padding: isMobile ? 12 : 24, paddingTop: 8 },
+    column: { width: isMobile ? 260 : 280, marginRight: 16 },
     columnHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12, paddingHorizontal: 8 },
     columnIndicator: { width: 4, height: 16, borderRadius: 2, marginRight: 8 },
     columnTitle: { fontSize: 12, fontFamily: Fonts.bold, color: colors.textSubtle, letterSpacing: 0.5 },
