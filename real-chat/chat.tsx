@@ -22,8 +22,7 @@ import { useTheme } from "../context/ThemeContext";
 import "text-encoding-polyfill";
 import { sessionsApi, chatApi, Session, ChatMessage, ToolEvent, ReasoningStep } from "../services/api";
 import { useNotifications } from "../context/NotificationContext";
-import { AppSidebar } from "../components/app-sidebar";
-import { useSidebar } from "../components/ui/sidebar";
+import Sidebar from "../components/Sidebar";
 import ChatTopBar from "../components/ChatTopBar";
 import ChatWelcome from "../components/ChatWelcome";
 import ChatInputArea from "../components/ChatInputArea";
@@ -97,7 +96,7 @@ export default function ChatScreen() {
     const { token, user } = useAuth();
     const { colors, isDark } = useTheme();
 
-    const { open, setOpen, toggleSidebar } = useSidebar();
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [selectedNav, setSelectedNav] = useState(CHAT_VIEW);
     const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -503,8 +502,8 @@ export default function ChatScreen() {
     };
 
     // ── Layout helpers ──
-    const showPersistentSidebar = r.isDesktop;
-    const sidebarWidth = open ? (r.isTablet ? 200 : 220) : 52;
+    const showPersistentSidebar = r.isDesktop && !sidebarCollapsed;
+    const sidebarWidth = r.isTablet ? 200 : 250;
     const chatPadH = r.isDesktop ? 120 : r.isTablet ? 40 : 16;
 
     const layout = getLayoutStyles(colors);
@@ -518,13 +517,18 @@ export default function ChatScreen() {
                 <View style={layout.root}>
                     {/* ── Persistent sidebar (desktop) ───────────────────────── */}
                     {showPersistentSidebar && (
-                        <AppSidebar
-                            selectedNav={selectedNav}
-                            onNavChange={setSelectedNav}
-                            sessions={sessions}
-                            activeSessionId={activeSessionId}
-                            onSelectSession={selectSession}
-                        />
+                        <View style={{ width: sidebarWidth }}>
+                            <Sidebar
+                                selectedNav={selectedNav}
+                                onNavChange={setSelectedNav}
+                                onClose={() => setSidebarCollapsed(true)}
+                                compact={r.isTablet}
+                                sessions={sessions}
+                                activeSessionId={activeSessionId}
+                                onSelectSession={selectSession}
+                                onRefreshSessions={loadSessions}
+                            />
+                        </View>
                     )}
 
                     {/* ── Main content ────────────────────────────────────────── */}
@@ -532,13 +536,14 @@ export default function ChatScreen() {
                         {/* Top bar (always visible on Chat, Integrations, Reminders) */}
                         {r.isDesktop ? (
                             <ChatTopBar
-                                sidebarCollapsed={!open}
-                                onToggleSidebar={() => setOpen(true)}
+                                sidebarCollapsed={sidebarCollapsed}
+                                onToggleSidebar={() => setSidebarCollapsed(false)}
                                 onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
                                 onExportChat={handleExportChat}
                             />
                         ) : (
                             <MobileTopBar
+                                onOpenDrawer={() => setDrawerOpen(true)}
                                 onViewReminders={() => setSelectedNav(REMINDERS_VIEW)}
                                 colors={colors}
                             />
@@ -625,6 +630,33 @@ export default function ChatScreen() {
 
                     {/* Artifacts disabled */}
 
+                    {/* ── Mobile/tablet drawer overlay ────────────────────────── */}
+                    {!r.isDesktop && drawerOpen && (
+                        <View style={layout.drawerOverlay}>
+                            <TouchableOpacity
+                                style={StyleSheet.absoluteFillObject}
+                                onPress={() => setDrawerOpen(false)}
+                            />
+                            <View style={{ width: sidebarWidth }}>
+                                <Sidebar
+                                    selectedNav={selectedNav}
+                                    onNavChange={(i) => {
+                                        setSelectedNav(i);
+                                        setDrawerOpen(false);
+                                    }}
+                                    onClose={() => setDrawerOpen(false)}
+                                    compact={r.isTablet}
+                                    sessions={sessions}
+                                    activeSessionId={activeSessionId}
+                                    onSelectSession={(id) => {
+                                        selectSession(id);
+                                        setDrawerOpen(false);
+                                    }}
+                                    onRefreshSessions={loadSessions}
+                                />
+                            </View>
+                        </View>
+                    )}
                 </View>
             </KeyboardAvoidingView>
         </SafeAreaView>
@@ -633,18 +665,19 @@ export default function ChatScreen() {
 
 // ── Mobile / Tablet top bar ────────────────────────────────────────────────
 function MobileTopBar({
+    onOpenDrawer,
     onViewReminders,
     colors,
 }: {
+    onOpenDrawer(): void;
     onViewReminders?(): void;
     colors: any;
 }) {
-    const { toggleSidebar } = useSidebar();
     const styles = getLayoutStyles(colors);
     const { notificationCount } = useNotifications();
     return (
         <View style={styles.mobileTopBar}>
-            <TouchableOpacity onPress={toggleSidebar} style={{ padding: 6 }}>
+            <TouchableOpacity onPress={onOpenDrawer} style={{ padding: 6 }}>
                 <Ionicons name="menu-outline" size={22} color={colors.text} />
             </TouchableOpacity>
             <View style={styles.mobileLogoRow}>

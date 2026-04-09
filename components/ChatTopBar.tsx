@@ -13,7 +13,7 @@ import { Fonts } from '../constants/theme';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTheme } from '../context/ThemeContext';
 import { useNotifications } from '../context/NotificationContext';
-import SidebarTrigger from './SidebarTrigger';
+import { SidebarTrigger } from './ui/sidebar';
 
 interface ChatTopBarProps {
     sidebarCollapsed: boolean;
@@ -50,7 +50,12 @@ export default function ChatTopBar({
 
     return (
         <View style={s.root}>
-            {sidebarCollapsed && <SidebarTrigger style={{ marginRight: 12 }} />}
+            {sidebarCollapsed && (
+                <SidebarTrigger 
+                    onPress={onToggleSidebar} 
+                    style={{ marginRight: 12 }} 
+                />
+            )}
 
             {/* Cortex dropdown */}
             <TouchableOpacity style={s.dropdown} activeOpacity={0.8}>

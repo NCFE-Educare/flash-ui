@@ -48,16 +48,23 @@ interface SidebarProps {
     activeSessionId: number | null;
     onSelectSession(id: number | null): void;
     onRefreshSessions(): void;
+    compact?: boolean;
 }
 
 export default function Sidebar({
     selectedNav, onNavChange, onClose,
-    sessions, activeSessionId, onSelectSession, onRefreshSessions
+    sessions, activeSessionId, onSelectSession, onRefreshSessions,
+    compact
 }: SidebarProps) {
 
     const { user, token, logout } = useAuth();
     const { colors, mode, setMode } = useTheme();
-    const { isCollapsed, sidebarWidth, toggleSidebar } = useSidebar();
+    const { isCollapsed: contextCollapsed, sidebarWidth: contextWidth, toggleSidebar } = useSidebar();
+    
+    // Prioritize the 'compact' prop if provided (from the restored chat screen)
+    const isCollapsed = compact !== undefined ? compact : contextCollapsed;
+    const sidebarWidth = compact !== undefined ? (compact ? 70 : 250) : contextWidth;
+
     const [deletingId, setDeletingId] = useState<number | null>(null);
 
     const handleDelete = async (id: number) => {
@@ -100,7 +107,7 @@ export default function Sidebar({
                             <Image source={require('../assets/logo.png')} style={{ width: 22, height: 22 }} resizeMode="contain" />
                             <Text style={s.logoText}>Cortex</Text>
                         </View>
-                        <SidebarTrigger />
+                        <SidebarTrigger onPress={onClose} />
                     </>
                 )}
             </View>

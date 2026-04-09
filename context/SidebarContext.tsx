@@ -1,72 +1,43 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useWindowDimensions } from 'react-native';
 
 interface SidebarContextType {
-  isCollapsed: boolean;
-  setCollapsed: (collapsed: boolean) => void;
+  state: "expanded" | "collapsed";
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  isMobile: boolean;
   toggleSidebar: () => void;
-  sidebarWidth: number;
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
-const STORAGE_KEY = '@sidebar_collapsed';
-
-export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SidebarProvider: React.FC<{ children: React.ReactNode, defaultOpen?: boolean }> = ({ 
+  children, 
+  defaultOpen = true 
+}) => {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 1024;
-  const isTablet = width >= 768 && width < 1024;
+  const isMobile = width < 768;
+  
+  const [open, setOpenInternal] = useState(defaultOpen);
 
-  const [isCollapsed, setIsCollapsedInternal] = useState(false);
-
-  // Load initial state from storage
-  useEffect(() => {
-    const loadState = async () => {
-      try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEY);
-        if (saved !== null) {
-          setIsCollapsedInternal(saved === 'true');
-        } else if (isTablet) {
-          // Default to collapsed on tablet
-          setIsCollapsedInternal(true);
-        }
-      } catch (e) {
-        console.error('Failed to load sidebar state', e);
-      }
-    };
-    loadState();
-  }, [isTablet]);
-
-  const setCollapsed = useCallback(async (collapsed: boolean) => {
-    setIsCollapsedInternal(collapsed);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, collapsed ? 'true' : 'false');
-    } catch (e) {
-      console.error('Failed to save sidebar state', e);
-    }
+  const setOpen = useCallback((value: boolean | ((v: boolean) => boolean)) => {
+    setOpenInternal(value);
   }, []);
 
   const toggleSidebar = useCallback(() => {
-    setCollapsed(!isCollapsed);
-  }, [isCollapsed, setCollapsed]);
+    setOpenInternal((prev) => !prev);
+  }, []);
 
-  // Dynamic width calculation
-  const getWidth = () => {
-    if (!isDesktop && !isTablet) return 280; // Mobile drawer width
-    if (isCollapsed) return 50;
-    return isTablet ? 200 : 200;
-  };
-
-  const sidebarWidth = getWidth();
+  const state = open ? "expanded" : "collapsed";
 
   return (
     <SidebarContext.Provider
       value={{
-        isCollapsed,
-        setCollapsed,
+        state,
+        open,
+        setOpen,
+        isMobile,
         toggleSidebar,
-        sidebarWidth,
       }}
     >
       {children}
@@ -76,8 +47,8 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
 export const useSidebar = () => {
   const context = useContext(SidebarContext);
-  if (context === undefined) {
-    throw new Error('useSidebar must be used within a SidebarProvider');
+  if (!context) {
+    throw new Error("useSidebar must be used within a SidebarProvider.");
   }
   return context;
 };

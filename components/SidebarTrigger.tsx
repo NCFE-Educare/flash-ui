@@ -6,16 +6,17 @@ import { useTheme } from '../context/ThemeContext';
 
 interface SidebarTriggerProps {
   style?: any;
+  onPress?: () => void;
 }
 
-export default function SidebarTrigger({ style }: SidebarTriggerProps) {
+export default function SidebarTrigger({ style, onPress }: SidebarTriggerProps) {
   const { isCollapsed, toggleSidebar } = useSidebar();
   const { colors } = useTheme();
 
   return (
     <TouchableOpacity 
       style={[styles.container, { backgroundColor: colors.surfaceHover, borderColor: colors.border }, style]}
-      onPress={toggleSidebar}
+      onPress={onPress || toggleSidebar}
       activeOpacity={0.7}
     >
       <PanelLeft 

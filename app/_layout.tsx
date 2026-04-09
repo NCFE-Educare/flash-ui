@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { NotificationProvider } from '../context/NotificationContext';
+import { SidebarProvider } from '../components/ui/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -88,7 +89,9 @@ export default function RootLayout() {
         <ThemeProvider>
             <AuthProvider>
                 <NotificationProvider>
-                    <ThemedApp />
+                    <SidebarProvider>
+                        <ThemedApp />
+                    </SidebarProvider>
                 </NotificationProvider>
             </AuthProvider>
         </ThemeProvider>
