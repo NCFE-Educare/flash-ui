@@ -7,12 +7,12 @@ import {
   TextInput, 
   TouchableOpacity,
   useWindowDimensions,
-  FlatList,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform,
+  Image
 } from 'react-native';
 import { 
   Search,
-  Globe,
   Plus,
   MessageSquareQuote,
   BookOpen,
@@ -21,87 +21,116 @@ import {
   Bell,
   Users,
   GraduationCap,
-  Mail,
-  Layout
+  ContactRound,
+  Images
 } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { Fonts } from '../constants/theme';
-import AppCard from './AppCard';
+import BentoCard, { BentoSize } from './BentoCard';
 
 const CATEGORIES = ['All', 'Academics', 'Admin', 'Planning', 'Design', 'Communication'];
 
-const APPS = [
+interface AppData {
+  id: string;
+  title: string;
+  description: string;
+  imageIcon?: any;
+  fallbackIcon: any;
+  category: string;
+  color: string;
+  size: BentoSize;
+}
+
+const APPS: AppData[] = [
   {
     id: '1',
     title: 'Quote Builder',
-    description: 'Create and design inspirational quotes for your school boards.',
-    icon: MessageSquareQuote,
+    description: 'Create and design inspirational quotes for school boards.',
+    imageIcon: require('../assets/apps/quote_builder_icon_1775725528190.png'),
+    fallbackIcon: MessageSquareQuote,
     category: 'Design',
-    color: '#8B5CF6', // Violet
+    color: '#8B5CF6',
+    size: 'small',
   },
   {
     id: '2',
     title: 'Lesson Planner',
     description: 'Structured planning tools for daily and weekly lessons.',
-    icon: BookOpen,
+    imageIcon: require('../assets/apps/lesson_planner_icon_1775725541729.png'),
+    fallbackIcon: BookOpen,
     category: 'Planning',
-    color: '#10B981', // Emerald
+    color: '#10B981',
+    size: 'small',
   },
   {
     id: '3',
     title: 'Exam Scheduler',
-    description: 'Automated scheduling for mid-terms and finals.',
-    icon: Calendar,
+    description: 'Automated finals scheduling and tracking.',
+    imageIcon: require('../assets/apps/exam_scheduler_icon_1775725556214.png'),
+    fallbackIcon: Calendar,
     category: 'Academics',
-    color: '#3B82F6', // Blue
+    color: '#3B82F6',
+    size: 'small',
   },
   {
     id: '4',
     title: 'Question Paper',
-    description: 'AI-assisted question paper generation and formatting.',
-    icon: FileEdit,
+    description: 'AI-assisted paper generation and formatting.',
+    imageIcon: require('../assets/apps/question_paper_icon_1775725579608.png'),
+    fallbackIcon: FileEdit,
     category: 'Academics',
-    color: '#F59E0B', // Amber
+    color: '#F59E0B',
+    size: 'small',
   },
   {
     id: '5',
     title: 'Circular Creation',
-    description: 'Draft official notices and circulars for staff and students.',
-    icon: Bell,
+    description: 'Draft official notices for staff and students.',
+    imageIcon: require('../assets/apps/circular_creation_icon_1775725594964.png'),
+    fallbackIcon: Bell,
     category: 'Admin',
-    color: '#EF4444', // Red
+    color: '#EF4444',
+    size: 'small',
   },
   {
     id: '6',
     title: 'Seating Plan',
-    description: 'Generate optimized exam seating arrangements instantly.',
-    icon: Users,
+    description: 'Generate exam seating arrangements instantly.',
+    imageIcon: require('../assets/apps/seating_plan_icon_1775725610563.png'),
+    fallbackIcon: Users,
     category: 'Admin',
-    color: '#06B6D4', // Cyan
+    color: '#06B6D4',
+    size: 'small',
   },
   {
     id: '7',
     title: 'Report Cards',
-    description: 'Comprehensive student performance tracking and generation.',
-    icon: GraduationCap,
+    description: 'Student performance tracking and reports.',
+    imageIcon: require('../assets/apps/report_cards_icon_1775725630881.png'),
+    fallbackIcon: GraduationCap,
     category: 'Academics',
-    color: '#6366F1', // Indigo
+    color: '#6366F1',
+    size: 'small',
   },
   {
     id: '8',
     title: 'Parent Notices',
-    description: 'Draft and send professional updates to parents.',
-    icon: Mail,
+    description: 'Draft professional updates to parents.',
+    imageIcon: require('../assets/apps/parent_notices_v3_icon_1775726054303.png'),
+    fallbackIcon: ContactRound,
     category: 'Communication',
-    color: '#EC4899', // Pink
+    color: '#EC4899',
+    size: 'small',
   },
   {
     id: '9',
     title: 'Carousel Builder',
-    description: 'Create engaging social media carousels for school events.',
-    icon: Layout,
+    description: 'Create engaging social media highlights.',
+    imageIcon: require('../assets/apps/carousel_builder_v4_icon_final_1775726208533.png'),
+    fallbackIcon: Images,
     category: 'Design',
-    color: '#F97316', // Orange
+    color: '#F97316',
+    size: 'small',
   },
 ];
 
@@ -110,13 +139,13 @@ export default function AppsPage() {
   const { width } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
-  const [launchingApp, setLaunchingApp] = useState<typeof APPS[0] | null>(null);
+  const [launchingApp, setLaunchingApp] = useState<AppData | null>(null);
 
-  const handleLaunchApp = (app: typeof APPS[0]) => {
+  const handleLaunchApp = (app: AppData) => {
     setLaunchingApp(app);
     setTimeout(() => {
       setLaunchingApp(null);
-    }, 2000); // Mock launch duration
+    }, 2000);
   };
 
   const filteredApps = useMemo(() => {
@@ -128,90 +157,83 @@ export default function AppsPage() {
     });
   }, [searchQuery, activeCategory]);
 
-  const numColumns = width > 1200 ? 4 : width > 800 ? 3 : 2;
-
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: colors.text }]}>Apps Library</Text>
-      <Text style={[styles.subtitle, { color: colors.textSubtle }]}>
-        Launch specialized tools powered by Cortex.
-      </Text>
-
-      <View style={[styles.searchContainer, { backgroundColor: colors.surfaceHover, borderColor: colors.border }]}>
-        <Search size={18} color={colors.textSubtle} />
-        <TextInput
-          placeholder="Search apps..."
-          placeholderTextColor={colors.textSubtle}
-          style={[styles.searchInput, { color: colors.text }]}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false} 
-        contentContainerStyle={styles.categories}
-      >
-        {CATEGORIES.map(cat => (
-          <TouchableOpacity
-            key={cat}
-            onPress={() => setActiveCategory(cat)}
-            style={[
-              styles.categoryChip,
-              { backgroundColor: activeCategory === cat ? colors.primary : colors.surfaceHover },
-              activeCategory === cat && { borderColor: colors.primary }
-            ]}
-          >
-            <Text style={[
-              styles.categoryLabel, 
-              { color: activeCategory === cat ? colors.textInverse : colors.textMuted }
-            ]}>
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
+  const isMobile = width < 768;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <FlatList
-        data={filteredApps}
-        keyExtractor={item => item.id}
-        numColumns={numColumns}
-        key={numColumns} // Force re-render when column count changes
-        ListHeaderComponent={renderHeader}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <AppCard
-            title={item.title}
-            description={item.description}
-            icon={item.icon}
-            category={item.category}
-            color={item.color}
-            onPress={() => handleLaunchApp(item)}
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.text }]}>Apps Library</Text>
+        <Text style={[styles.subtitle, { color: colors.textSubtle }]}>
+          Premium 3D utilities for school management.
+        </Text>
+
+        <View style={[styles.searchContainer, { backgroundColor: colors.surfaceHover, borderColor: colors.border }]}>
+          <Search size={18} color={colors.textSubtle} />
+          <TextInput
+            placeholder="Search apps..."
+            placeholderTextColor={colors.textSubtle}
+            style={[styles.searchInput, { color: colors.text }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={{ color: colors.textSubtle, fontFamily: Fonts.medium }}>No apps found matching your criteria.</Text>
-          </View>
-        }
-      />
+        </View>
+
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.categories}
+        >
+          {CATEGORIES.map(cat => (
+            <TouchableOpacity
+              key={cat}
+              onPress={() => setActiveCategory(cat)}
+              style={[
+                styles.categoryChip,
+                { backgroundColor: activeCategory === cat ? colors.primary : colors.surfaceHover },
+                activeCategory === cat && { borderColor: colors.primary }
+              ]}
+            >
+              <Text style={[
+                styles.categoryLabel, 
+                { color: activeCategory === cat ? colors.textInverse : colors.textMuted }
+              ]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={[styles.gridContainer, isMobile && styles.mobileGrid]}>
+        {filteredApps.map(app => (
+          <BentoCard
+            key={app.id}
+            title={app.title}
+            description={app.description}
+            imageIcon={app.imageIcon}
+            fallbackIcon={app.fallbackIcon}
+            category={app.category}
+            color={app.color}
+            size={isMobile ? 'wide' : 'small'}
+            onPress={() => handleLaunchApp(app)}
+          />
+        ))}
+      </View>
 
       {launchingApp && (
         <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: colors.background + 'F0' }]}>
           <View style={[styles.launchIcon, { backgroundColor: launchingApp.color + '20' }]}>
-            <launchingApp.icon size={48} color={launchingApp.color} />
+            {launchingApp.imageIcon ? (
+                <Image source={launchingApp.imageIcon} style={{ width: 80, height: 80 }} />
+            ) : (
+                <launchingApp.fallbackIcon size={48} color={launchingApp.color} />
+            )}
           </View>
           <Text style={[styles.launchTitle, { color: colors.text }]}>Launching {launchingApp.title}...</Text>
           <ActivityIndicator color={launchingApp.color} size="large" />
         </View>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -219,77 +241,84 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 60,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontFamily: Fonts.bold,
     marginBottom: 8,
+    letterSpacing: -1,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: Fonts.regular,
     marginBottom: 24,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     marginBottom: 16,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
-    fontSize: 14,
+    marginLeft: 12,
+    fontSize: 15,
     fontFamily: Fonts.regular,
   },
   categories: {
-    gap: 8,
+    gap: 10,
   },
   categoryChip: {
-    paddingHorizontal: 16,
-    height: 32,
-    borderRadius: 16,
+    paddingHorizontal: 20,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'transparent',
   },
   categoryLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: Fonts.semibold,
   },
-  row: {
-    justifyContent: 'flex-start',
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    margin: -6,
   },
-  empty: {
-    marginTop: 60,
-    alignItems: 'center',
+  mobileGrid: {
+    flexDirection: 'column',
   },
   overlay: {
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 100,
+    zIndex: 1000,
+    ...Platform.select({
+        web: {
+            position: 'fixed' as any
+        }
+    })
   },
   launchIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
+    width: 120,
+    height: 120,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   launchTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: Fonts.semibold,
-    marginBottom: 20,
+    marginBottom: 24,
   }
 });
