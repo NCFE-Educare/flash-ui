@@ -108,6 +108,7 @@ export function AppSidebar({
 
         {!isCollapsed && (
           <SidebarGroup>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <Text style={[styles.sectionTitle, { color: colors.textSubtle }]}>Recent Sessions</Text>
             <ScrollView style={{ maxHeight: 300 }}>
               {sessions.map(session => (
@@ -197,6 +198,13 @@ const styles = StyleSheet.create({
   navLabel: {
     fontSize: 13,
     fontFamily: Fonts.medium,
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: 10,
+    marginTop: 8,
+    marginBottom: 8,
+    opacity: 0.6,
   },
   sectionTitle: {
     fontSize: 10,
