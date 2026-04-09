@@ -138,6 +138,8 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     position: 'absolute',
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   textContainer: {
     marginTop: 12,

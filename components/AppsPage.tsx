@@ -224,7 +224,10 @@ export default function AppsPage() {
         <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: colors.background + 'F0' }]}>
           <View style={[styles.launchIcon, { backgroundColor: launchingApp.color + '20' }]}>
             {launchingApp.imageIcon ? (
-                <Image source={launchingApp.imageIcon} style={{ width: 80, height: 80 }} />
+                <Image 
+                  source={launchingApp.imageIcon} 
+                  style={{ width: 84, height: 84, borderRadius: 24, overflow: 'hidden' }} 
+                />
             ) : (
                 <launchingApp.fallbackIcon size={48} color={launchingApp.color} />
             )}
