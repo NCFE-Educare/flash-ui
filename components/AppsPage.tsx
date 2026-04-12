@@ -27,6 +27,8 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { Fonts } from '../constants/theme';
 import BentoCard, { BentoSize } from './BentoCard';
+import QuoteBuilderApp from './QuoteBuilderApp';
+import LessonPlannerApp from './LessonPlannerApp';
 
 const CATEGORIES = ['All', 'Academics', 'Admin', 'Planning', 'Design', 'Communication'];
 
@@ -140,12 +142,19 @@ export default function AppsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [launchingApp, setLaunchingApp] = useState<AppData | null>(null);
+  const [showQuoteBuilder, setShowQuoteBuilder] = useState(false);
+  const [showLessonPlanner, setShowLessonPlanner] = useState(false);
 
   const handleLaunchApp = (app: AppData) => {
     setLaunchingApp(app);
     setTimeout(() => {
       setLaunchingApp(null);
-    }, 2000);
+      if (app.id === '1') {
+        setShowQuoteBuilder(true);
+      } else if (app.id === '2') {
+        setShowLessonPlanner(true);
+      }
+    }, 1500); // Reduced slightly for better UX
   };
 
   const filteredApps = useMemo(() => {
@@ -234,6 +243,17 @@ export default function AppsPage() {
           </View>
           <Text style={[styles.launchTitle, { color: colors.text }]}>Launching {launchingApp.title}...</Text>
           <ActivityIndicator color={launchingApp.color} size="large" />
+        </View>
+      )}
+
+      {showQuoteBuilder && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 2000 }]}>
+            <QuoteBuilderApp onBack={() => setShowQuoteBuilder(false)} />
+        </View>
+      )}
+      {showLessonPlanner && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 2000 }]}>
+            <LessonPlannerApp onBack={() => setShowLessonPlanner(false)} />
         </View>
       )}
     </ScrollView>

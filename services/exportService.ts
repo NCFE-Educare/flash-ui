@@ -105,3 +105,68 @@ export async function exportChatToPDF(
     throw err;
   }
 }
+
+export async function exportLessonPlanToPDF(
+  content: string,
+  topic: string,
+  grade: string
+) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const jsPDFClass = await loadJsPDF();
+    if (!jsPDFClass) throw new Error("PDF library could not be loaded.");
+    
+    const doc = new jsPDFClass();
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const contentWidth = pageWidth - (margin * 2);
+    let y = 30;
+
+    // -- Header --
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(124, 58, 237); // Primary color (#7C3AED)
+    doc.text("Lesson Plan", margin, y);
+    y += 12;
+
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text(`Topic: ${topic}`, margin, y);
+    y += 8;
+    doc.text(`Grade: ${grade}`, margin, y);
+    y += 15;
+
+    doc.setDrawColor(200);
+    doc.line(margin, y - 5, pageWidth - margin, y - 5);
+
+    // -- Content --
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(50);
+
+    // Clean markdown bold/extra chars for basic PDF display
+    const cleanContent = content
+      .replace(/#/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '•');
+
+    const textLines = doc.splitTextToSize(cleanContent, contentWidth);
+    
+    textLines.forEach((line: string) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(line, margin, y);
+      y += 6;
+    });
+
+    const fileName = `LessonPlan_${topic.replace(/\s+/g, '_')}.pdf`;
+    doc.save(fileName);
+    return true;
+  } catch (err) {
+    console.error("Lesson Plan PDF Export Error:", err);
+    throw err;
+  }
+}
