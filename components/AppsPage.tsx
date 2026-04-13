@@ -29,6 +29,7 @@ import { Fonts } from '../constants/theme';
 import BentoCard, { BentoSize } from './BentoCard';
 import QuoteBuilderApp from './QuoteBuilderApp';
 import LessonPlannerApp from './LessonPlannerApp';
+import ReportCardGeneratorApp from './ReportCardGeneratorApp';
 
 const CATEGORIES = ['All', 'Academics', 'Admin', 'Planning', 'Design', 'Communication'];
 
@@ -144,6 +145,7 @@ export default function AppsPage() {
   const [launchingApp, setLaunchingApp] = useState<AppData | null>(null);
   const [showQuoteBuilder, setShowQuoteBuilder] = useState(false);
   const [showLessonPlanner, setShowLessonPlanner] = useState(false);
+  const [showReportCardGenerator, setShowReportCardGenerator] = useState(false);
 
   const handleLaunchApp = (app: AppData) => {
     setLaunchingApp(app);
@@ -153,6 +155,8 @@ export default function AppsPage() {
         setShowQuoteBuilder(true);
       } else if (app.id === '2') {
         setShowLessonPlanner(true);
+      } else if (app.id === '7') {
+        setShowReportCardGenerator(true);
       }
     }, 1500); // Reduced slightly for better UX
   };
@@ -254,6 +258,11 @@ export default function AppsPage() {
       {showLessonPlanner && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 2000 }]}>
             <LessonPlannerApp onBack={() => setShowLessonPlanner(false)} />
+        </View>
+      )}
+      {showReportCardGenerator && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 2000 }]}>
+            <ReportCardGeneratorApp onBack={() => setShowReportCardGenerator(false)} />
         </View>
       )}
     </ScrollView>
